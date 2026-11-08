@@ -330,6 +330,7 @@ const CONFIG = {
   ALERTE_REVERSEMENT_JOURS: 2    // alerte si l'argent d'un vendeur n'est pas reversé après X jours
 };
 
+
 /* =====================================================================
    2. ICÔNES (SVG en ligne, sans dépendance)
    ===================================================================== */
@@ -729,6 +730,7 @@ async function chargerProfil(uid){
   let p = null;
   if(navigator.onLine){
     const { data, error } = await sb.from('profils').select('*').eq('id', uid).maybeSingle();
+    S.erreurProfil = error ? (error.message || String(error)) : (data ? null : 'aucune fiche profil pour ce compte');
     if(!error && data){ p = data; localStorage.setItem('profil_'+uid, JSON.stringify(p)); }
     else if(!error && !data) return null;
   }
@@ -740,7 +742,13 @@ async function verifierProfil(){ if(!S.uid) return; const p = await chargerProfi
 async function ouvrirSession(uid, opts){
   S.uid = uid; localStorage.setItem('dernier_uid', uid);
   const p = await chargerProfil(uid);
-  if(!p){ S.uid = null; await sb.auth.signOut(); return afficher('v-login'); }
+  if(!p){
+    // Connexion acceptée mais profil illisible : on explique pourquoi au lieu de revenir silencieusement
+    const motif = S.erreurProfil || 'profil introuvable';
+    S.uid = null; await sb.auth.signOut(); afficher('v-login');
+    $('#login-err').textContent = 'Mot de passe correct, mais le compte n\'est pas prêt (' + motif + '). Contactez l\'administrateur.';
+    return;
+  }
   S.profil = p;
   if(!p.actif) return afficher('v-suspendu');
   if(p.doit_changer_mdp){ $('#mdp-err').textContent = navigator.onLine ? '' : 'Connexion internet nécessaire pour changer le mot de passe.'; return afficher('v-mdp'); }
