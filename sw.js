@@ -3,7 +3,7 @@
    À chaque nouvelle version de index.html, augmentez VERSION ci-dessous :
    les téléphones verront « Nouvelle version disponible ».
    ===================================================================== */
-const VERSION = 'livraisons-v1.1.0';
+const VERSION = 'livraisons-v1.1.1';
 const COQUILLE = ['./', './index.html', './manifest.webmanifest', './icone-192.png', './icone-512.png',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js'];
 
