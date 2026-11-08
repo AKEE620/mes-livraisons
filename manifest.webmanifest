@@ -1,0 +1,17 @@
+{
+  "name": "Mes Livraisons",
+  "short_name": "Livraisons",
+  "description": "Gestion simple des commandes et livraisons pour livreurs",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F2F2F0",
+  "theme_color": "#1F1F21",
+  "icons": [
+    { "src": "icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icone-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

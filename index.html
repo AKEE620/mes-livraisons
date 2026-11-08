@@ -1,0 +1,1968 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F1F21">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Livraisons">
+<title>Mes Livraisons</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-192.png">
+<!--
+  =====================================================================
+   MES LIVRAISONS — Appli PWA de gestion des livraisons (lot 1)
+   Fichier unique : HTML + CSS + JS. Aucune compilation nécessaire.
+   Dépendances (CDN) : supabase-js v2 ; jsPDF + autotable et SheetJS
+   sont chargés seulement au moment d'un export.
+   Fichiers à placer à côté : sw.js, manifest.webmanifest, icônes.
+  =====================================================================
+-->
+<style>
+/* ---------- Variables de thème ---------- */
+:root{
+  --fond:#F2F2F0; --carte:#FFFFFF; --texte:#1F1F21; --texte2:#5C5C62; --ligne:#DCDCD8;
+  --primaire:#1F1F21; --sur-primaire:#FFFFFF; --rouge:#B8100A; --rouge-clair:#FBE9E8;
+  --vert:#1E7B3C; --vert-clair:#E3F3E8; --orange:#B35C00; --orange-clair:#FDF0E1;
+  --bleu:#1C5DA8; --bleu-clair:#E4EEF9; --violet:#6B3FA0; --violet-clair:#F0E9F8;
+  --gris:#6B6B70; --gris-clair:#ECECEA;
+  --rayon:14px; --ombre:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.05);
+  --haut-nav:66px;
+}
+body.sombre{
+  --fond:#121214; --carte:#1E1E22; --texte:#F2F2F0; --texte2:#A8A8AE; --ligne:#34343A;
+  --primaire:#F2F2F0; --sur-primaire:#121214; --rouge:#FF5A4F; --rouge-clair:#3A1716;
+  --vert:#4CC676; --vert-clair:#16301F; --orange:#F0A040; --orange-clair:#33240F;
+  --bleu:#6AA8F0; --bleu-clair:#15263A; --violet:#B48EE6; --violet-clair:#2A1E38;
+  --gris:#A0A0A6; --gris-clair:#2A2A30;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--fond);color:var(--texte);font-size:16px;line-height:1.35;overscroll-behavior-y:contain}
+button,input,select,textarea{font:inherit;color:inherit}
+.cache{display:none!important}
+svg.ic{width:22px;height:22px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- Écrans plein écran (connexion, PIN…) ---------- */
+.ecran{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:var(--fond);z-index:50;overflow:auto}
+.ecran .boite{width:100%;max-width:380px}
+.logo{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.logo .pastille{width:52px;height:52px;border-radius:14px;background:var(--rouge);display:grid;place-items:center;color:#fff}
+.logo .pastille svg{width:30px;height:30px}
+.logo h1{font-size:22px;margin:0}
+.logo p{margin:2px 0 0;color:var(--texte2);font-size:14px}
+.ecran h2{font-size:20px;margin:0 0 6px}
+.ecran .aide{color:var(--texte2);font-size:14px;margin:0 0 18px}
+
+/* ---------- Formulaires ---------- */
+label.champ{display:block;margin-bottom:14px}
+label.champ>span{display:block;font-size:14px;font-weight:600;margin-bottom:6px}
+label.champ>span em{font-style:normal;color:var(--rouge)}
+input.saisie,select.saisie,textarea.saisie{width:100%;min-height:50px;border:1.5px solid var(--ligne);border-radius:12px;background:var(--carte);padding:12px 14px;font-size:17px;outline:none}
+textarea.saisie{min-height:80px;resize:vertical}
+input.saisie:focus,select.saisie:focus,textarea.saisie:focus{border-color:var(--primaire)}
+.prefixe{display:flex;align-items:stretch}
+.prefixe b{display:flex;align-items:center;padding:0 12px;border:1.5px solid var(--ligne);border-right:0;border-radius:12px 0 0 12px;background:var(--gris-clair);font-weight:600}
+.prefixe input{border-radius:0 12px 12px 0}
+.ligne2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sous{font-size:13px;color:var(--texte2);margin-top:4px}
+.erreur{background:var(--rouge-clair);color:var(--rouge);border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:14px}
+.erreur:empty{display:none}
+
+/* ---------- Boutons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:0 18px;border-radius:12px;border:0;background:var(--primaire);color:var(--sur-primaire);font-weight:700;font-size:16px;cursor:pointer;width:100%}
+.btn:active{transform:scale(.98)}
+.btn[disabled]{opacity:.5}
+.btn.second{background:var(--gris-clair);color:var(--texte)}
+.btn.vert{background:var(--vert);color:#fff}
+.btn.rouge{background:var(--rouge);color:#fff}
+.btn.contour{background:transparent;border:1.5px solid var(--ligne);color:var(--texte)}
+.btn.petit{min-height:40px;font-size:14px;padding:0 12px;width:auto}
+.lien{background:none;border:0;color:var(--texte2);text-decoration:underline;font-size:14px;padding:10px;cursor:pointer}
+.grille-btn{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pile{display:flex;flex-direction:column;gap:10px}
+
+/* ---------- Clavier PIN ---------- */
+.pin-points{display:flex;justify-content:center;gap:16px;margin:18px 0 26px}
+.pin-points i{width:16px;height:16px;border-radius:50%;border:2px solid var(--texte)}
+.pin-points i.plein{background:var(--texte)}
+.pin-points.secoue{animation:secoue .35s}
+@keyframes secoue{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.clavier{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:300px;margin:0 auto}
+.clavier button{height:64px;border-radius:50%;border:0;background:var(--carte);box-shadow:var(--ombre);font-size:26px;font-weight:600;cursor:pointer}
+.clavier button.vide{background:transparent;box-shadow:none}
+.clavier button:active{background:var(--gris-clair)}
+
+/* ---------- Structure de l'appli ---------- */
+#app{min-height:100%;padding-bottom:calc(var(--haut-nav) + env(safe-area-inset-bottom) + 20px)}
+header.barre{position:sticky;top:0;z-index:10;background:var(--primaire);color:var(--sur-primaire);padding:calc(10px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:12px}
+header.barre h1{font-size:19px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#etat-synchro{display:flex;align-items:center;gap:6px;font-size:13px;background:rgba(255,255,255,.12);border:0;color:inherit;border-radius:20px;padding:6px 10px;cursor:pointer}
+body.sombre #etat-synchro{background:rgba(0,0,0,.12)}
+#etat-synchro i{width:9px;height:9px;border-radius:50%;background:#4CC676}
+#etat-synchro.attente i{background:#F0A040}
+#etat-synchro.horsligne i{background:#9a9a9a}
+#etat-synchro.encours i{background:#6AA8F0;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+main{padding:14px 14px 0;max-width:720px;margin:0 auto}
+nav.onglets{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--carte);border-top:1px solid var(--ligne);display:grid;grid-template-columns:repeat(5,1fr);height:calc(var(--haut-nav) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom)}
+nav.onglets button{border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;color:var(--texte2);cursor:pointer}
+nav.onglets button.actif{color:var(--texte);font-weight:700}
+nav.onglets button.actif svg{stroke-width:2.6}
+nav.onglets .plus{position:relative}
+nav.onglets .plus span{width:58px;height:58px;border-radius:50%;background:var(--rouge);color:#fff;display:grid;place-items:center;margin-top:-26px;box-shadow:0 4px 12px rgba(184,16,10,.35)}
+nav.onglets .plus span svg{width:30px;height:30px;stroke-width:2.6}
+
+/* ---------- Cartes & blocs ---------- */
+.carte{background:var(--carte);border-radius:var(--rayon);box-shadow:var(--ombre);padding:14px;margin-bottom:12px}
+.titre-section{display:flex;align-items:center;justify-content:space-between;margin:18px 2px 8px}
+.titre-section h3{margin:0;font-size:16px}
+.titre-section .lien{padding:0}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
+.kpi{background:var(--carte);border-radius:var(--rayon);box-shadow:var(--ombre);padding:12px 14px;border-left:5px solid var(--gris);cursor:pointer;text-align:left;border-top:0;border-right:0;border-bottom:0;width:100%}
+.kpi b{display:block;font-size:26px;line-height:1.1}
+.kpi span{font-size:13px;color:var(--texte2)}
+.kpi.vert{border-left-color:var(--vert)} .kpi.orange{border-left-color:var(--orange)}
+.kpi.bleu{border-left-color:var(--bleu)} .kpi.rouge{border-left-color:var(--rouge)} .kpi.violet{border-left-color:var(--violet)}
+.argent{display:grid;grid-template-columns:1fr auto;gap:8px 12px;font-size:15px}
+.argent .v{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.argent .total{border-top:1.5px solid var(--ligne);padding-top:8px;font-weight:800;font-size:17px}
+.argent .neg{color:var(--rouge)} .argent .pos{color:var(--vert)}
+.puces{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;margin:0 -2px;scrollbar-width:none}
+.puces::-webkit-scrollbar{display:none}
+.puce{flex:none;border:1.5px solid var(--ligne);background:var(--carte);border-radius:20px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.puce.actif{background:var(--primaire);color:var(--sur-primaire);border-color:var(--primaire)}
+.puce small{font-weight:700;opacity:.75;margin-left:4px}
+.vide-etat{text-align:center;color:var(--texte2);padding:30px 10px}
+.vide-etat svg{width:44px;height:44px;opacity:.5;margin-bottom:8px}
+.banniere{display:flex;gap:10px;align-items:center;background:var(--bleu-clair);color:var(--bleu);border-radius:var(--rayon);padding:12px 14px;margin-bottom:12px;font-size:14px}
+.banniere.orange{background:var(--orange-clair);color:var(--orange)}
+.banniere div{flex:1}
+
+/* ---------- Commandes ---------- */
+.recherche{position:relative;margin-bottom:10px}
+.recherche svg{position:absolute;left:14px;top:14px;color:var(--texte2)}
+.recherche input{padding-left:44px}
+.groupe-date{font-size:13px;font-weight:700;color:var(--texte2);text-transform:uppercase;letter-spacing:.04em;margin:16px 4px 8px}
+.cmd{background:var(--carte);border-radius:var(--rayon);box-shadow:var(--ombre);margin-bottom:10px;overflow:hidden;border-left:5px solid var(--gris)}
+.cmd.en_attente{border-left-color:var(--orange)} .cmd.recuperee{border-left-color:var(--bleu)}
+.cmd.livree{border-left-color:var(--vert)} .cmd.reportee{border-left-color:var(--violet)}
+.cmd.annulee,.cmd.retournee{border-left-color:var(--gris)}
+.cmd .corps{padding:12px 14px 8px;cursor:pointer}
+.cmd .l1{display:flex;align-items:center;gap:8px}
+.cmd .l1 b{flex:1;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmd .l2{color:var(--texte2);font-size:14px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmd .l2 svg{width:15px;height:15px;vertical-align:-2px}
+a.btn{text-decoration:none}
+.cmd .l3{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:14px}
+.cmd .l3 strong{font-size:16px;font-variant-numeric:tabular-nums}
+.cmd .actions{display:flex;border-top:1px solid var(--ligne)}
+.cmd .actions button,.cmd .actions a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:46px;border:0;background:none;font-size:14px;font-weight:600;color:var(--texte);text-decoration:none;cursor:pointer}
+.cmd .actions>*+*{border-left:1px solid var(--ligne)}
+.cmd .actions .ok{color:var(--vert)}
+.badge{display:inline-block;font-size:12px;font-weight:700;border-radius:20px;padding:3px 9px;white-space:nowrap}
+.b-en_attente{background:var(--orange-clair);color:var(--orange)} .b-recuperee{background:var(--bleu-clair);color:var(--bleu)}
+.b-livree{background:var(--vert-clair);color:var(--vert)} .b-reportee{background:var(--violet-clair);color:var(--violet)}
+.b-annulee,.b-retournee{background:var(--gris-clair);color:var(--gris)}
+.b-retard{background:var(--rouge-clair);color:var(--rouge)}
+.b-reverse{background:var(--vert-clair);color:var(--vert)}
+.b-photo{background:var(--gris-clair);color:var(--texte2);display:inline-flex;align-items:center;gap:3px}
+.b-photo svg{width:13px;height:13px}
+.photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.photos button{aspect-ratio:1;border:0;border-radius:10px;overflow:hidden;padding:0;background:var(--gris-clair);cursor:pointer;display:grid;place-items:center;color:var(--texte2);font-size:12px}
+.photos img{width:100%;height:100%;object-fit:cover;display:block}
+.visionneuse img{width:100%;border-radius:12px;display:block;background:#000}
+.message-type{background:var(--carte);border-radius:12px;padding:12px;margin-bottom:10px;border:1.5px solid var(--ligne)}
+.message-type p{margin:0 0 10px;font-size:14px;color:var(--texte2);white-space:pre-line}
+.message-type b{display:block;margin-bottom:6px}
+.prochaine{border-left:5px solid var(--bleu)}
+.alerte{display:flex;gap:10px;align-items:center;background:var(--rouge-clair);color:var(--rouge);border-radius:var(--rayon);padding:12px 14px;margin-bottom:10px;font-size:14px;border:0;width:100%;text-align:left;cursor:pointer}
+.alerte div{flex:1} .b-areverser{background:var(--orange-clair);color:var(--orange)}
+
+/* ---------- Feuilles (panneaux du bas) & dialogues ---------- */
+#feuilles>.fond{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:flex;align-items:flex-end;justify-content:center;animation:apparait .15s}
+@keyframes apparait{from{opacity:0}}
+.feuille{background:var(--fond);width:100%;max-width:720px;max-height:94vh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;animation:monte .2s ease-out}
+@keyframes monte{from{transform:translateY(40px)}}
+.feuille .tete{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--ligne)}
+.feuille .tete h2{flex:1;margin:0;font-size:18px}
+.feuille .tete button{border:0;background:var(--gris-clair);width:38px;height:38px;border-radius:50%;display:grid;place-items:center;cursor:pointer}
+.feuille .contenu{overflow-y:auto;padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+.feuille .pied{padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--ligne);background:var(--carte)}
+#feuilles>.fond.centre{align-items:center;padding:20px}
+#feuilles>.fond.centre .feuille{border-radius:20px;max-width:420px}
+details.plus-details{background:var(--carte);border-radius:12px;padding:0 14px;margin-bottom:14px;border:1.5px solid var(--ligne)}
+details.plus-details summary{padding:14px 0;font-weight:700;cursor:pointer;list-style:none;display:flex;justify-content:space-between}
+details.plus-details summary::after{content:"+";font-size:20px;line-height:1}
+details.plus-details[open] summary::after{content:"\2212"}
+details.plus-details[open]{padding-bottom:4px}
+.choix{display:flex;gap:8px;flex-wrap:wrap}
+.choix button{flex:1;min-height:46px;border:1.5px solid var(--ligne);background:var(--carte);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;padding:0 10px}
+.choix button.actif{border-color:var(--primaire);background:var(--primaire);color:var(--sur-primaire)}
+.info{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:15px}
+.info dt{color:var(--texte2)} .info dd{margin:0;font-weight:600;word-break:break-word}
+.histo{font-size:14px;color:var(--texte2);margin:0;padding-left:18px}
+.histo li{margin-bottom:4px}
+.interrupteur{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:50px;cursor:pointer}
+.interrupteur input{width:24px;height:24px;accent-color:var(--vert)}
+
+/* ---------- Tableaux (rapports) ---------- */
+.tableau{width:100%;border-collapse:collapse;font-size:14px}
+.tableau th,.tableau td{padding:8px 6px;border-bottom:1px solid var(--ligne);text-align:left}
+.tableau th{font-size:12px;color:var(--texte2);text-transform:uppercase;letter-spacing:.03em}
+.tableau td.n,.tableau th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tableau tfoot td{font-weight:800;border-bottom:0}
+.defile{overflow-x:auto}
+
+/* ---------- Graphique ---------- */
+.graph svg{width:100%;height:auto;display:block}
+.graph text{fill:var(--texte2);font-size:11px}
+.graph rect.barre{fill:var(--vert)}
+.graph text.val{fill:var(--texte);font-weight:700}
+
+/* ---------- Notifications ---------- */
+#toast{position:fixed;left:50%;bottom:calc(var(--haut-nav) + env(safe-area-inset-bottom) + 14px);transform:translateX(-50%);z-index:90;background:#1F1F21;color:#fff;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:14px;font-size:15px;box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:calc(100% - 28px);width:max-content}
+#toast button{background:none;border:0;color:#FFB4AE;font-weight:800;font-size:15px;cursor:pointer;padding:4px}
+.chargement{display:inline-block;width:18px;height:18px;border:2.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:tourne .7s linear infinite}
+@keyframes tourne{to{transform:rotate(360deg)}}
+@media (min-width:640px){.kpis{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+
+<!-- ================== ÉCRAN : configuration manquante ================== -->
+<section id="v-config" class="ecran cache"><div class="boite">
+  <h2>Configuration requise</h2>
+  <p class="aide">Renseignez l'adresse et la clé publique de votre projet Supabase dans la section CONFIG en haut du script de index.html, puis rechargez la page.</p>
+</div></section>
+
+<!-- ================== ÉCRAN : connexion ================== -->
+<section id="v-login" class="ecran cache"><div class="boite">
+  <div class="logo"><div class="pastille" data-ic="colis"></div><div><h1 class="nom-appli">Mes Livraisons</h1><p>Gérez vos courses simplement</p></div></div>
+  <form id="f-login" autocomplete="on">
+    <div class="erreur" id="login-err"></div>
+    <label class="champ"><span>Numéro de téléphone</span>
+      <div class="prefixe"><b class="indicatif">+228</b><input class="saisie" id="login-tel" type="tel" inputmode="numeric" autocomplete="username" placeholder="90 12 34 56" required></div></label>
+    <label class="champ"><span>Mot de passe</span>
+      <input class="saisie" id="login-mdp" type="password" autocomplete="current-password" required></label>
+    <button class="btn" type="submit" id="login-btn">Se connecter</button>
+  </form>
+  <p style="text-align:center"><button class="lien" type="button" id="btn-oubli">Mot de passe oublié ?</button></p>
+</div></section>
+
+<!-- ================== ÉCRAN : changement obligatoire du mot de passe ================== -->
+<section id="v-mdp" class="ecran cache"><div class="boite">
+  <h2>Choisissez votre mot de passe</h2>
+  <p class="aide">Pour votre sécurité, remplacez le mot de passe provisoire reçu par un mot de passe personnel que vous seul connaissez.</p>
+  <form id="f-mdp">
+    <div class="erreur" id="mdp-err"></div>
+    <label class="champ"><span>Nouveau mot de passe</span><input class="saisie" id="mdp-1" type="password" autocomplete="new-password" required>
+      <div class="sous">Au moins 8 caractères, avec des lettres et des chiffres.</div></label>
+    <label class="champ"><span>Confirmez le mot de passe</span><input class="saisie" id="mdp-2" type="password" autocomplete="new-password" required></label>
+    <button class="btn" type="submit" id="mdp-btn">Enregistrer</button>
+  </form>
+  <p style="text-align:center"><button class="lien" type="button" data-action="deconnexion">Se déconnecter</button></p>
+</div></section>
+
+<!-- ================== ÉCRAN : PIN (création et déverrouillage) ================== -->
+<section id="v-pin" class="ecran cache"><div class="boite" style="text-align:center">
+  <div class="logo" style="justify-content:center"><div class="pastille" data-ic="cadenas"></div></div>
+  <h2 id="pin-titre">Code PIN</h2>
+  <p class="aide" id="pin-aide"></p>
+  <div class="pin-points" id="pin-points"><i></i><i></i><i></i><i></i></div>
+  <div class="clavier" id="pin-clavier"></div>
+  <p><button class="lien" type="button" id="pin-oubli">Code oublié ? Se reconnecter avec le mot de passe</button>
+     <button class="lien cache" type="button" id="pin-annuler">Annuler</button></p>
+</div></section>
+
+<!-- ================== ÉCRAN : compte suspendu ================== -->
+<section id="v-suspendu" class="ecran cache"><div class="boite">
+  <h2>Compte suspendu</h2>
+  <p class="aide">Votre accès a été suspendu par l'administrateur. Contactez-le pour le réactiver.</p>
+  <button class="btn second" data-action="deconnexion">Se déconnecter</button>
+</div></section>
+
+<!-- ================== APPLICATION ================== -->
+<div id="app" class="cache">
+  <header class="barre">
+    <h1 id="titre-page">Accueil</h1>
+    <button id="etat-synchro" type="button"><i></i><span>À jour</span></button>
+  </header>
+  <main>
+    <section id="t-accueil"></section>
+    <section id="t-commandes" class="cache"></section>
+    <section id="t-rapports" class="cache"></section>
+    <section id="t-plus" class="cache"></section>
+  </main>
+  <nav class="onglets">
+    <button data-onglet="accueil" class="actif"><span data-ic="maison"></span>Accueil</button>
+    <button data-onglet="commandes"><span data-ic="liste"></span>Commandes</button>
+    <button class="plus" data-action="nouvelle-commande" aria-label="Nouvelle commande"><span data-ic="plus"></span></button>
+    <button data-onglet="rapports"><span data-ic="graph"></span>Rapports</button>
+    <button data-onglet="plus"><span data-ic="menu"></span>Plus</button>
+  </nav>
+</div>
+
+<div id="feuilles"></div>
+<div id="toast" class="cache"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+'use strict';
+/* =====================================================================
+   1. CONFIGURATION — à renseigner une seule fois
+   ===================================================================== */
+const CONFIG = {
+  SUPABASE_URL: 'https://VOTRE-PROJET.supabase.co',   // Supabase > Project Settings > API > Project URL
+  SUPABASE_ANON_KEY: 'VOTRE_CLE_PUBLIQUE_ANON',        // Supabase > Project Settings > API > anon public
+  INDICATIF: '228',              // indicatif pays (Togo)
+  LONGUEUR_NUMERO: 8,            // nombre de chiffres d'un numéro local
+  DOMAINE_TECHNIQUE: 'livreurs.app', // domaine des « e-mails techniques » (ne pas changer après le démarrage)
+  NOM_APPLI: 'Mes Livraisons',
+  DEVISE: 'F',                   // affiché après les montants
+  VERROU_MINUTES: 5,             // verrouillage par PIN après X minutes d'inactivité
+  ESSAIS_PIN: 5,                 // au-delà : déconnexion complète
+  VERSION: '1.1.0',
+  PHOTO_MAX_PX: 1280,            // taille maximale des photos de preuve (compressées en JPEG)
+  PHOTOS_MAX: 3,                 // photos par commande
+  ALERTE_REVERSEMENT_JOURS: 2    // alerte si l'argent d'un vendeur n'est pas reversé après X jours
+};
+
+/* =====================================================================
+   2. ICÔNES (SVG en ligne, sans dépendance)
+   ===================================================================== */
+const ICONES = {
+  colis:'<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8M7.5 5.5l9 5"/>',
+  maison:'<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+  liste:'<path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  graph:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
+  tel:'<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+  message:'<path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  fermer:'<path d="M18 6 6 18M6 6l12 12"/>',
+  loupe:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  carte:'<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  cadenas:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  boutique:'<path d="M3 9 4.5 4h15L21 9"/><path d="M3 9h18v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 13v8h14v-8"/>',
+  portefeuille:'<rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20M16 15h2"/>',
+  compte:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  bouclier:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  fichier:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15h6M9 11h2"/>',
+  partage:'<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>',
+  copie:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  crayon:'<path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>',
+  synchro:'<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/>',
+  chevron:'<path d="m9 18 6-6-6-6"/>',
+  telecharger:'<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+  photo:'<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  cloche:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  horloge:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  envoi:'<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>'
+};
+function ic(nom, cls){ return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" aria-hidden="true">${ICONES[nom]||''}</svg>`; }
+function poserIcones(racine){ (racine||document).querySelectorAll('[data-ic]').forEach(el=>{ if(!el.firstChild) el.innerHTML = ic(el.dataset.ic); }); }
+
+/* =====================================================================
+   3. OUTILS GÉNÉRAUX
+   ===================================================================== */
+const $ = (s, r) => (r||document).querySelector(s);
+const $$ = (s, r) => Array.from((r||document).querySelectorAll(s));
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() :
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=crypto.getRandomValues(new Uint8Array(1))[0]&15;return (c==='x'?r:(r&3|8)).toString(16);}));
+const maintenant = () => new Date().toISOString();
+
+// Montants : espaces normales (compatibles PDF), sans décimales
+function fmt(n){ n = Math.round(Number(n)||0); const s = Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' '); return (n<0?'-':'')+s; }
+function fmtF(n){ return fmt(n)+' '+CONFIG.DEVISE; }
+function lireMontant(v){ const d = String(v||'').replace(/\D/g,''); return d ? parseInt(d,10) : 0; }
+
+// Dates au format AAAA-MM-JJ (heure locale)
+function ymd(d){ d = d||new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function decaler(jours, base){ const d = base ? new Date(base+'T12:00:00') : new Date(); d.setDate(d.getDate()+jours); return ymd(d); }
+const MOIS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+const JOURS = ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
+function dateLisible(s){ if(!s) return ''; const d = new Date(s.length===10 ? s+'T12:00:00' : s); return JOURS[d.getDay()]+' '+d.getDate()+' '+MOIS[d.getMonth()]+' '+d.getFullYear(); }
+function dateCourte(s){ if(!s) return ''; const d = new Date(s.length===10 ? s+'T12:00:00' : s); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear(); }
+function heure(s){ if(!s) return ''; const d = new Date(s); return String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0'); }
+function libelleJour(s){ const a = ymd(); if(s===a) return "Aujourd'hui"; if(s===decaler(-1)) return 'Hier'; if(s===decaler(1)) return 'Demain'; return dateLisible(s); }
+
+// Téléphones : on stocke les chiffres locaux (ex. 90123456)
+function normTel(v){
+  let d = String(v||'').replace(/\D/g,'');
+  if(d.startsWith('00')) d = d.slice(2);
+  if(d.startsWith(CONFIG.INDICATIF) && d.length === CONFIG.INDICATIF.length + CONFIG.LONGUEUR_NUMERO) d = d.slice(CONFIG.INDICATIF.length);
+  return d;
+}
+const telValide = d => d.length === CONFIG.LONGUEUR_NUMERO;
+const emailDe = tel => CONFIG.INDICATIF + tel + '@' + CONFIG.DOMAINE_TECHNIQUE;
+const telAffiche = d => { d = normTel(d); return d.length===CONFIG.LONGUEUR_NUMERO ? d.replace(/(\d{2})(?=\d)/g,'$1 ') : d; };
+const telInternational = d => { d = normTel(d); return d.length===CONFIG.LONGUEUR_NUMERO ? CONFIG.INDICATIF + d : d; };
+const lienAppel = d => 'tel:+' + telInternational(d);
+const lienWhatsApp = (d, texte) => 'https://wa.me/' + (d ? telInternational(d) : '') + '?text=' + encodeURIComponent(texte||'');
+
+// Mot de passe provisoire lisible (sans 0/O/1/I/L)
+function genererMdp(){
+  const L='ABCDEFGHJKMNPQRSTUVWXYZ', C='23456789', T=L+C; const r = crypto.getRandomValues(new Uint32Array(8));
+  let s = L[r[0]%L.length] + C[r[1]%C.length]; for(let i=2;i<8;i++) s += T[r[i]%T.length];
+  return s.split('').sort(()=>(crypto.getRandomValues(new Uint8Array(1))[0]&1)-.5).join('');
+}
+function mdpRobuste(m){ return m.length>=8 && /[A-Za-z]/.test(m) && /\d/.test(m); }
+
+async function sha256(texte){ const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texte)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+
+// Chargement à la demande d'un script (exports PDF / Excel)
+const scriptsCharges = {};
+function chargerScript(url){
+  if(!scriptsCharges[url]) scriptsCharges[url] = new Promise((ok,ko)=>{ const s=document.createElement('script'); s.src=url; s.onload=ok; s.onerror=()=>{delete scriptsCharges[url]; ko(new Error('Chargement impossible : vérifiez la connexion internet'));}; document.head.appendChild(s); });
+  return scriptsCharges[url];
+}
+
+/* =====================================================================
+   4. NOTIFICATIONS, FEUILLES ET DIALOGUES
+   ===================================================================== */
+let toastMinuteur = null;
+function toast(msg, actions){  // actions = {libelle, fn} ou tableau de {libelle, fn}
+  const t = $('#toast'); clearTimeout(toastMinuteur);
+  actions = actions ? (Array.isArray(actions) ? actions : [actions]) : [];
+  t.innerHTML = '<span>'+esc(msg)+'</span>' + actions.map((a,i)=>'<button type="button" data-i="'+i+'">'+esc(a.libelle)+'</button>').join('');
+  t.classList.remove('cache');
+  $$('button', t).forEach(b => b.onclick = () => { t.classList.add('cache'); actions[+b.dataset.i].fn(); });
+  toastMinuteur = setTimeout(()=>t.classList.add('cache'), actions.length ? 6000 : 3000);
+}
+
+// Pile de feuilles : le bouton « retour » du téléphone ferme la feuille du dessus
+const pileFeuilles = [];
+let resolveurRetour = null;
+function ouvrirFeuille({titre, contenu, pied, centre, rendre, manuel}){
+  const fond = document.createElement('div'); fond.className = 'fond' + (centre?' centre':'');
+  fond.innerHTML = `<div class="feuille" role="dialog"><div class="tete"><h2>${esc(titre)}</h2><button type="button" class="x" aria-label="Fermer">${ic('fermer')}</button></div><div class="contenu"></div>${pied!==undefined?'<div class="pied"></div>':''}</div>`;
+  const f = { fond, el: fond.querySelector('.feuille'), contenu: fond.querySelector('.contenu'), pied: fond.querySelector('.pied'), rendre, manuel };
+  if(typeof contenu === 'string') f.contenu.innerHTML = contenu;
+  if(pied) f.pied.innerHTML = pied;
+  fond.querySelector('.x').onclick = () => fermerFeuille();
+  fond.addEventListener('click', e => { if(e.target === fond) fermerFeuille(); });
+  $('#feuilles').appendChild(fond); pileFeuilles.push(f);
+  history.pushState({feuille: pileFeuilles.length}, '');
+  if(rendre) rendre(f);
+  return f;
+}
+function fermerFeuille(){
+  if(!pileFeuilles.length) return Promise.resolve();
+  return new Promise(ok => { resolveurRetour = ok; history.back(); });
+}
+window.addEventListener('popstate', e => {
+  // On ferme toutes les feuilles situées au-dessus du niveau d'historique atteint
+  const niveau = (e.state && e.state.feuille) || 0;
+  while(pileFeuilles.length > niveau){ const f = pileFeuilles.pop(); f.fond.remove(); if(f.surFermeture) f.surFermeture(); }
+  if(resolveurRetour){ const r = resolveurRetour; resolveurRetour = null; r(); }
+});
+async function fermerTout(){ while(pileFeuilles.length) await fermerFeuille(); }
+function rafraichirFeuilles(){ pileFeuilles.forEach(f => { if(f.rendre && !f.manuel) f.rendre(f); }); }
+
+// Confirmation (remplace window.confirm)
+function confirmer(titre, message, libelleOk, style){
+  return new Promise(ok => {
+    let reponse = false;
+    const f = ouvrirFeuille({ titre, centre:true, contenu:`<p style="margin:0 0 18px">${esc(message)}</p><div class="grille-btn"><button class="btn second" data-r="0">Retour</button><button class="btn ${style||''}" data-r="1">${esc(libelleOk||'Confirmer')}</button></div>` });
+    f.surFermeture = () => ok(reponse);
+    f.contenu.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { reponse = b.dataset.r === '1'; fermerFeuille(); });
+  });
+}
+
+// Saisie d'un motif (annulation, report, retour) — avec choix rapides
+const MOTIFS = ['Client absent','Client injoignable','Adresse introuvable','Client a refusé le colis','Reporté à la demande du client','Colis endommagé','Annulé par le vendeur'];
+function demanderMotif(titre, avecDate){
+  return new Promise(ok => {
+    let res = null;
+    const f = ouvrirFeuille({ titre, centre:true, contenu:`
+      <div class="choix" style="margin-bottom:12px">${MOTIFS.map(m=>`<button type="button" class="puce" data-m="${esc(m)}">${esc(m)}</button>`).join('')}</div>
+      <label class="champ"><span>Motif <em>*</em></span><textarea class="saisie" id="motif-txt" placeholder="Précisez le motif"></textarea></label>
+      ${avecDate?`<label class="champ"><span>Nouvelle date de livraison</span><input class="saisie" type="date" id="motif-date" value="${decaler(1)}"></label>`:''}
+      <div class="erreur" id="motif-err"></div>
+      <div class="grille-btn"><button class="btn second" data-r="0">Retour</button><button class="btn" data-r="1">Valider</button></div>` });
+    f.surFermeture = () => ok(res);
+    f.contenu.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { $('#motif-txt').value = b.dataset.m; });
+    f.contenu.querySelector('[data-r="0"]').onclick = () => fermerFeuille();
+    f.contenu.querySelector('[data-r="1"]').onclick = () => {
+      const m = $('#motif-txt').value.trim();
+      if(!m){ $('#motif-err').textContent = 'Le motif est obligatoire.'; return; }
+      res = { motif:m, date: avecDate ? ($('#motif-date').value || decaler(1)) : null };
+      fermerFeuille();
+    };
+  });
+}
+
+/* =====================================================================
+   5. STOCKAGE LOCAL (IndexedDB) — une base par livreur
+   ===================================================================== */
+const DB = {
+  db: null,
+  ouvrir(uid){
+    return new Promise((ok,ko) => {
+      // Version 2 (lot 2) : ajout du magasin « photos » (images de preuve gardées dans le téléphone)
+      const r = indexedDB.open('livraisons_' + uid, 2);
+      r.onupgradeneeded = () => { const db = r.result; ['commandes','vendeurs','depenses','photos'].forEach(s => { if(!db.objectStoreNames.contains(s)) db.createObjectStore(s, {keyPath:'id'}); }); if(!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', {keyPath:'k'}); };
+      r.onsuccess = () => { DB.db = r.result; ok(); };
+      r.onerror = () => ko(r.error);
+    });
+  },
+  _tx(store, mode){ return DB.db.transaction(store, mode).objectStore(store); },
+  tout(store){ return new Promise((ok,ko) => { const r = DB._tx(store,'readonly').getAll(); r.onsuccess=()=>ok(r.result||[]); r.onerror=()=>ko(r.error); }); },
+  mettre(store, objets){ objets = Array.isArray(objets)?objets:[objets]; return new Promise((ok,ko) => { const tx = DB.db.transaction(store,'readwrite'); const s = tx.objectStore(store); objets.forEach(o=>s.put(o)); tx.oncomplete=()=>ok(); tx.onerror=()=>ko(tx.error); }); },
+  async lireMeta(k){ return new Promise(ok => { const r = DB._tx('meta','readonly').get(k); r.onsuccess=()=>ok(r.result?r.result.v:null); r.onerror=()=>ok(null); }); },
+  ecrireMeta(k, v){ return DB.mettre('meta', {k, v}); },
+  lire(store, id){ return new Promise(ok => { const r = DB._tx(store,'readonly').get(id); r.onsuccess=()=>ok(r.result||null); r.onerror=()=>ok(null); }); },
+  effacer(store, id){ return new Promise(ok => { const tx = DB.db.transaction(store,'readwrite'); tx.objectStore(store).delete(id); tx.oncomplete=tx.onerror=()=>ok(); }); },
+  fermer(){ if(DB.db){ DB.db.close(); DB.db = null; } },
+  supprimer(uid){ DB.fermer(); return new Promise(ok => { const r = indexedDB.deleteDatabase('livraisons_'+uid); r.onsuccess=r.onerror=r.onblocked=()=>ok(); }); }
+};
+
+/* =====================================================================
+   6. ÉTAT DE L'APPLICATION
+   ===================================================================== */
+const S = {
+  uid:null, profil:null, commandes:[], vendeurs:[], depenses:[],
+  photosAttente:[],   // photos à envoyer / à supprimer sur le serveur : {id, commande_id, action:'envoyer'|'supprimer'}
+  onglet:'accueil', periodeAccueil:'jour',
+  filtreCmd:'afaire', recherche:'',
+  rapport:{ periode:'mois', du:null, au:null, statut:'tous', vendeur:'tous' },
+  mdpSaisi:null, enLigne:navigator.onLine, synchroEnCours:false
+};
+let sb = null;  // client Supabase
+
+const STATUTS = {
+  en_attente:{ l:'En attente' }, recuperee:{ l:'Récupérée' }, livree:{ l:'Livrée' },
+  reportee:{ l:'Reportée' }, annulee:{ l:'Annulée' }, retournee:{ l:'Retournée' }
+};
+const ACTIFS = ['en_attente','recuperee','reportee'];
+const CATEGORIES_DEP = ['Carburant','Réparation / entretien','Crédit téléphone / internet','Repas','Stationnement / péage','Autre'];
+
+const vendeurDe = id => S.vendeurs.find(v => v.id === id);
+const nomVendeur = id => { const v = vendeurDe(id); return v ? v.nom : 'Sans vendeur'; };
+const enRetard = c => ACTIFS.includes(c.statut) && c.date_prevue < ymd();
+// Date de référence : jour de livraison pour une commande livrée, sinon date prévue
+const dateRef = c => (c.statut==='livree' && c.livree_le) ? ymd(new Date(c.livree_le)) : c.date_prevue;
+
+/* ---------- Calcul de l'argent d'une commande ----------
+   encaisse   : ce que le client paie au livreur
+   netVendeur : ce que le livreur doit au vendeur (négatif = le vendeur lui doit)
+   gain       : frais de livraison (revenu du livreur)                         */
+function argent(c){
+  const art = c.deja_paye ? 0 : (c.montant_articles||0);
+  const frais = c.frais_livraison||0;
+  const encaisse = art + (c.frais_payes_par==='client' ? frais : 0);
+  const netVendeur = c.vendeur_id ? art - (c.frais_payes_par==='vendeur' ? frais : 0) : 0;
+  return { encaisse, netVendeur, gain: frais };
+}
+
+/* ---------- Bornes des périodes ---------- */
+function bornes(code, du, au){
+  const a = ymd(), d = new Date();
+  switch(code){
+    case 'jour': return { du:a, au:a, l:"Aujourd'hui" };
+    case 'hier': return { du:decaler(-1), au:decaler(-1), l:'Hier' };
+    case '7j': return { du:decaler(-6), au:a, l:'7 derniers jours' };
+    case 'mois': return { du:ymd(new Date(d.getFullYear(), d.getMonth(), 1)), au:a, l:'Ce mois' };
+    case 'moisprec': return { du:ymd(new Date(d.getFullYear(), d.getMonth()-1, 1)), au:ymd(new Date(d.getFullYear(), d.getMonth(), 0)), l:'Mois dernier' };
+    case 'perso': return { du:du||a, au:au||a, l:'Du '+dateCourte(du||a)+' au '+dateCourte(au||a) };
+    default: return { du:'0000-00-00', au:'9999-12-31', l:'Depuis le début' };
+  }
+}
+
+/* ---------- Synthèse complète sur une période (tableau de bord + rapports) ---------- */
+function synthese(du, au, filtres){
+  filtres = filtres || {};
+  let cmds = S.commandes.filter(c => { const r = dateRef(c); return r >= du && r <= au; });
+  if(filtres.vendeur && filtres.vendeur !== 'tous') cmds = cmds.filter(c => (c.vendeur_id||'aucun') === filtres.vendeur);
+  if(filtres.statut && filtres.statut !== 'tous') cmds = cmds.filter(c => c.statut === filtres.statut);
+  const nb = {}; Object.keys(STATUTS).forEach(k => nb[k] = 0); cmds.forEach(c => nb[c.statut]++);
+  const livrees = cmds.filter(c => c.statut==='livree');
+  const r = { cmds, nb, total:cmds.length, livrees, encaisse:0, especes:0, mobile:0, frais:0, aReverser:0, dejaReverse:0, vendeurs:{} };
+  livrees.forEach(c => {
+    const a = argent(c);
+    r.encaisse += a.encaisse; r.frais += a.gain;
+    if(c.mode_paiement==='mobile_money') r.mobile += a.encaisse; else r.especes += a.encaisse;
+    if(c.reverse) r.dejaReverse += a.netVendeur; else r.aReverser += a.netVendeur;
+  });
+  cmds.forEach(c => {
+    const k = c.vendeur_id || 'aucun';
+    const v = r.vendeurs[k] = r.vendeurs[k] || { id:k, nom:nomVendeur(c.vendeur_id), total:0, livrees:0, echecs:0, articles:0, frais:0, net:0, reverse:0, reste:0 };
+    v.total++;
+    if(c.statut==='livree'){ const a = argent(c); v.livrees++; v.articles += c.deja_paye?0:c.montant_articles; v.frais += a.gain; v.net += a.netVendeur; if(c.reverse) v.reverse += a.netVendeur; else v.reste += a.netVendeur; }
+    else if(['annulee','retournee','reportee'].includes(c.statut)) v.echecs++;
+  });
+  const deps = S.depenses.filter(d => !d.supprime && d.date >= du && d.date <= au);
+  r.depenses = deps; r.totalDep = deps.reduce((s,d)=>s+(d.montant||0),0);
+  r.gainNet = r.frais - r.totalDep;
+  const termines = nb.livree + nb.annulee + nb.retournee + nb.reportee;
+  r.taux = termines ? Math.round(100*nb.livree/termines) : null;
+  return r;
+}
+// Dette totale envers les vendeurs (toutes périodes confondues)
+function detteVendeurs(vendeurId){
+  return S.commandes.filter(c => c.statut==='livree' && !c.reverse && c.vendeur_id && (!vendeurId || c.vendeur_id===vendeurId))
+    .reduce((s,c)=>s+argent(c).netVendeur, 0);
+}
+
+/* =====================================================================
+   7. SYNCHRONISATION (hors ligne d'abord)
+   Chaque modification est enregistrée dans le téléphone avec _sale=true,
+   puis envoyée au serveur dès que la connexion est disponible.
+   ===================================================================== */
+const TABLES = ['vendeurs','commandes','depenses'];   // ordre : vendeurs avant commandes
+let minuteurSynchro = null;
+function planifierSynchro(){ clearTimeout(minuteurSynchro); minuteurSynchro = setTimeout(synchroniser, 1200); }
+const nbEnAttente = () => TABLES.reduce((s,t)=>s+S[t].filter(x=>x._sale).length, 0) + S.photosAttente.length;
+function pourServeur(o){ const r = {}; Object.keys(o).forEach(k => { if(k[0] !== '_' && k !== 'sync_le') r[k] = o[k]; }); return r; }
+
+async function synchroniser(manuel){
+  if(!sb || !S.uid || S.synchroEnCours) return;
+  if(!navigator.onLine){ majEtatSynchro(); if(manuel) toast('Pas de connexion : vos données sont gardées dans le téléphone.'); return; }
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ majEtatSynchro(); if(manuel) toast('Session expirée : reconnectez-vous.'); return; }
+  // Vérifie à chaque synchro que le compte est toujours actif (suspension par l'admin)
+  const p = await chargerProfil(S.uid);
+  if(p){ S.profil = p; if(!p.actif){ await fermerTout(); return afficher('v-suspendu'); } }
+  S.synchroEnCours = true; majEtatSynchro();
+  try{
+    // 1) Envoi des modifications locales
+    for(const t of TABLES){
+      const sales = S[t].filter(x => x._sale);
+      for(let i=0; i<sales.length; i+=200){
+        const lot = sales.slice(i, i+200);
+        const envoi = lot.map(pourServeur);
+        const { error } = await sb.from(t).upsert(envoi);
+        if(error) throw error;
+        lot.forEach((o, j) => { if(o.maj_le === envoi[j].maj_le) o._sale = false; });
+        await DB.mettre(t, lot);
+      }
+    }
+    // 2) Réception des données du serveur (autre appareil, réinstallation…)
+    for(const t of TABLES){
+      let depuis = await DB.lireMeta('pull_'+t), page = 0, recu;
+      do{
+        let q = sb.from(t).select('*').order('sync_le', {ascending:true}).range(page*1000, page*1000+999);
+        if(depuis) q = q.gt('sync_le', depuis);
+        const { data, error } = await q; if(error) throw error;
+        recu = data || [];
+        const aEcrire = [];
+        recu.forEach(d => {
+          const i = S[t].findIndex(x => x.id === d.id), loc = S[t][i];
+          if(!loc){ S[t].push(d); aEcrire.push(d); }
+          else if(!loc._sale || d.maj_le >= loc.maj_le){ S[t][i] = d; aEcrire.push(d); }
+        });
+        if(aEcrire.length) await DB.mettre(t, aEcrire);
+        if(recu.length) await DB.ecrireMeta('pull_'+t, recu[recu.length-1].sync_le);
+        page++;
+      } while(recu.length === 1000);
+    }
+    // 3) Photos de preuve (séparé : un souci de photo ne bloque jamais les données)
+    try{ await synchroniserPhotos(); }catch(e){ console.warn('Photos', e); }
+    await sb.rpc('ping_synchro');
+    await DB.ecrireMeta('derniere_synchro', maintenant());
+    if(manuel) toast('Synchronisation terminée.');
+  }catch(e){
+    console.warn('Synchro', e);
+    const msg = String(e && (e.message||e));
+    if(/row-level security|permission|JWT|401|403/i.test(msg)) await verifierProfil();
+    if(manuel) toast('Synchronisation impossible pour le moment. Nouvel essai automatique.');
+  }finally{
+    S.synchroEnCours = false; majEtatSynchro(); rafraichirTout(true);
+  }
+}
+function majEtatSynchro(){
+  const b = $('#etat-synchro'); if(!b) return; const n = nbEnAttente();
+  b.className = ''; let t = 'À jour';
+  if(S.synchroEnCours){ b.classList.add('encours'); t = 'Envoi…'; }
+  else if(!navigator.onLine){ b.classList.add('horsligne'); t = n ? 'Hors ligne ('+n+')' : 'Hors ligne'; }
+  else if(n){ b.classList.add('attente'); t = n+' à envoyer'; }
+  b.querySelector('span').textContent = t;
+}
+window.addEventListener('online', () => { majEtatSynchro(); synchroniser(); });
+window.addEventListener('offline', majEtatSynchro);
+setInterval(() => { if(S.uid && !document.hidden) synchroniser(); }, 120000);
+
+/* ---------- Enregistrement d'un objet (local puis serveur) ---------- */
+async function enregistrer(table, obj){
+  obj.livreur_id = S.uid; obj.maj_le = maintenant(); obj._sale = true;
+  const i = S[table].findIndex(x => x.id === obj.id);
+  if(i >= 0) S[table][i] = obj; else S[table].push(obj);
+  await DB.mettre(table, obj);
+  rafraichirTout(); planifierSynchro();
+  return obj;
+}
+
+/* =====================================================================
+   8. CONNEXION, MOT DE PASSE, PIN, VERROUILLAGE
+   ===================================================================== */
+function afficher(vue){
+  ['v-config','v-login','v-mdp','v-pin','v-suspendu'].forEach(id => $('#'+id).classList.toggle('cache', id !== vue));
+  $('#app').classList.toggle('cache', vue !== 'app');
+  if(vue === 'v-login') setTimeout(()=>$('#login-tel').focus(), 50);
+}
+
+async function demarrer(){
+  appliquerTheme();
+  $$('.nom-appli').forEach(e => e.textContent = CONFIG.NOM_APPLI);
+  $$('.indicatif').forEach(e => e.textContent = '+' + CONFIG.INDICATIF);
+  document.title = CONFIG.NOM_APPLI;
+  poserIcones(); construireClavier();
+  if(!window.supabase || /VOTRE/.test(CONFIG.SUPABASE_URL + CONFIG.SUPABASE_ANON_KEY)){
+    if(!window.supabase && !navigator.onLine){ $('#v-config .aide').textContent = "Pas de connexion internet. Ouvrez l'appli une première fois avec internet."; }
+    return afficher('v-config');
+  }
+  sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth:{ persistSession:true, autoRefreshToken:true } });
+  sb.auth.onAuthStateChange((evt) => { if(evt === 'SIGNED_OUT' && S.uid && !S.deconnexionVolontaire){ S.uid = null; DB.fermer(); afficher('v-login'); } });
+  let uid = null;
+  try{ const { data:{ session } } = await sb.auth.getSession(); uid = session && session.user ? session.user.id : null; }catch(e){}
+  if(!uid && !navigator.onLine) uid = localStorage.getItem('dernier_uid');   // mode hors ligne
+  if(!uid) return afficher('v-login');
+  await ouvrirSession(uid, { verrouiller:true });
+}
+
+async function chargerProfil(uid){
+  let p = null;
+  if(navigator.onLine){
+    const { data, error } = await sb.from('profils').select('*').eq('id', uid).maybeSingle();
+    if(!error && data){ p = data; localStorage.setItem('profil_'+uid, JSON.stringify(p)); }
+    else if(!error && !data) return null;
+  }
+  if(!p){ try{ p = JSON.parse(localStorage.getItem('profil_'+uid)); }catch(e){} }
+  return p;
+}
+async function verifierProfil(){ if(!S.uid) return; const p = await chargerProfil(S.uid); if(p){ S.profil = p; if(!p.actif) afficher('v-suspendu'); } }
+
+async function ouvrirSession(uid, opts){
+  S.uid = uid; localStorage.setItem('dernier_uid', uid);
+  const p = await chargerProfil(uid);
+  if(!p){ S.uid = null; await sb.auth.signOut(); return afficher('v-login'); }
+  S.profil = p;
+  if(!p.actif) return afficher('v-suspendu');
+  if(p.doit_changer_mdp){ $('#mdp-err').textContent = navigator.onLine ? '' : 'Connexion internet nécessaire pour changer le mot de passe.'; return afficher('v-mdp'); }
+  await DB.ouvrir(uid);
+  for(const t of TABLES) S[t] = await DB.tout(t);
+  await chargerPhotosAttente();
+  if(!localStorage.getItem('pin_'+uid)) return lancerPin('creer');
+  if(opts && opts.verrouiller) return lancerPin('ouvrir');
+  entrerDansApp();
+}
+
+function entrerDansApp(){
+  afficher('app'); dernierGeste = Date.now();
+  allerOnglet(S.onglet || 'accueil');
+  majEtatSynchro(); synchroniser();
+  // Commande demandée par une notification
+  if(commandeAOuvrir && S.commandes.find(c => c.id === commandeAOuvrir)){ const id = commandeAOuvrir; commandeAOuvrir = null; setTimeout(() => ficheCommande(id), 50); }
+  setTimeout(verifierRappels, 1500);
+}
+
+// --- Connexion par numéro + mot de passe ---
+$('#f-login').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = $('#login-err'); err.textContent = '';
+  const tel = normTel($('#login-tel').value), mdp = $('#login-mdp').value;
+  if(!telValide(tel)){ err.textContent = 'Numéro invalide : '+CONFIG.LONGUEUR_NUMERO+' chiffres attendus.'; return; }
+  if(!navigator.onLine){ err.textContent = 'Pas de connexion internet. La connexion nécessite internet.'; return; }
+  const b = $('#login-btn'); b.disabled = true; b.innerHTML = '<span class="chargement"></span>';
+  try{
+    const { data, error } = await sb.auth.signInWithPassword({ email: emailDe(tel), password: mdp });
+    if(error){
+      err.textContent = /banned/i.test(error.message) ? 'Compte suspendu. Contactez votre administrateur.'
+        : /invalid/i.test(error.message) ? 'Numéro ou mot de passe incorrect.' : 'Connexion impossible : ' + error.message;
+      return;
+    }
+    S.mdpSaisi = mdp; $('#login-mdp').value = '';
+    await ouvrirSession(data.user.id, { verrouiller:false });
+  }catch(ex){ err.textContent = 'Connexion impossible. Vérifiez internet et réessayez.'; }
+  finally{ b.disabled = false; b.textContent = 'Se connecter'; }
+});
+$('#btn-oubli').onclick = () => { $('#login-err').textContent = "Contactez votre administrateur : il vous donnera un nouveau mot de passe provisoire."; };
+
+// --- Changement de mot de passe (obligatoire ou volontaire) ---
+async function changerMotDePasse(m1, m2){
+  if(m1 !== m2) throw new Error('Les deux mots de passe ne sont pas identiques.');
+  if(!mdpRobuste(m1)) throw new Error('Au moins 8 caractères, avec des lettres et des chiffres.');
+  if(S.mdpSaisi && m1 === S.mdpSaisi) throw new Error("Choisissez un mot de passe différent du mot de passe provisoire.");
+  if(!navigator.onLine) throw new Error('Connexion internet nécessaire.');
+  const { error } = await sb.auth.updateUser({ password: m1 });
+  if(error) throw new Error(/different/i.test(error.message) ? 'Choisissez un mot de passe différent de l\'ancien.' : error.message);
+  const r = await sb.rpc('mdp_change_ok'); if(r.error) throw new Error(r.error.message);
+  S.mdpSaisi = null;
+}
+$('#f-mdp').addEventListener('submit', async e => {
+  e.preventDefault();
+  const b = $('#mdp-btn'); b.disabled = true; $('#mdp-err').textContent = '';
+  try{
+    await changerMotDePasse($('#mdp-1').value, $('#mdp-2').value);
+    $('#mdp-1').value = $('#mdp-2').value = '';
+    S.profil.doit_changer_mdp = false; localStorage.setItem('profil_'+S.uid, JSON.stringify(S.profil));
+    toast('Mot de passe enregistré.');
+    await ouvrirSession(S.uid, { verrouiller:false });
+  }catch(ex){ $('#mdp-err').textContent = ex.message; }
+  finally{ b.disabled = false; }
+});
+
+// --- Code PIN : création, déverrouillage, verrouillage automatique ---
+const pinEtat = { mode:'ouvrir', saisie:'', premier:null, essais:0 };
+function construireClavier(){
+  const k = $('#pin-clavier');
+  k.innerHTML = ['1','2','3','4','5','6','7','8','9','','0','<'].map(c => c==='' ? '<button class="vide" disabled></button>' : `<button type="button" data-k="${c}">${c==='<'?'&#9003;':c}</button>`).join('');
+  k.addEventListener('click', e => { const b = e.target.closest('[data-k]'); if(b) touchePin(b.dataset.k); });
+  document.addEventListener('keydown', e => { if($('#v-pin').classList.contains('cache')) return; if(/^\d$/.test(e.key)) touchePin(e.key); else if(e.key==='Backspace') touchePin('<'); });
+}
+function lancerPin(mode){
+  pinEtat.mode = mode; pinEtat.saisie = ''; pinEtat.premier = null;
+  $('#pin-titre').textContent = mode==='ouvrir' ? 'Entrez votre code PIN' : 'Créez votre code PIN';
+  $('#pin-aide').textContent = mode==='ouvrir' ? (S.profil ? S.profil.nom : '') : 'Code à 4 chiffres pour ouvrir l\'appli rapidement chaque jour.';
+  $('#pin-oubli').classList.toggle('cache', mode !== 'ouvrir');
+  $('#pin-annuler').classList.toggle('cache', mode !== 'changer');
+  dessinerPoints(); afficher('v-pin');
+}
+$('#pin-annuler').onclick = () => entrerDansApp();
+function dessinerPoints(){ $$('#pin-points i').forEach((i,n) => i.classList.toggle('plein', n < pinEtat.saisie.length)); }
+function erreurPin(msg){ const p = $('#pin-points'); p.classList.remove('secoue'); void p.offsetWidth; p.classList.add('secoue'); pinEtat.saisie=''; dessinerPoints(); if(msg) $('#pin-aide').textContent = msg; }
+async function touchePin(k){
+  if(k === '<'){ pinEtat.saisie = pinEtat.saisie.slice(0,-1); return dessinerPoints(); }
+  if(pinEtat.saisie.length >= 4) return;
+  pinEtat.saisie += k; dessinerPoints();
+  if(pinEtat.saisie.length < 4) return;
+  const code = pinEtat.saisie;
+  if(pinEtat.mode === 'ouvrir'){
+    const enr = JSON.parse(localStorage.getItem('pin_'+S.uid) || 'null');
+    if(enr && await sha256(enr.sel + code) === enr.h){ pinEtat.essais = 0; pinEtat.saisie=''; return entrerDansApp(); }
+    pinEtat.essais++;
+    if(pinEtat.essais >= CONFIG.ESSAIS_PIN){ pinEtat.essais = 0; toast('Trop d\'essais : reconnectez-vous avec votre mot de passe.'); return deconnexion(true); }
+    return erreurPin('Code incorrect. Essais restants : ' + (CONFIG.ESSAIS_PIN - pinEtat.essais));
+  }
+  // création ou changement
+  if(!pinEtat.premier){ pinEtat.premier = code; pinEtat.saisie=''; dessinerPoints(); $('#pin-titre').textContent = 'Confirmez le code PIN'; return; }
+  if(pinEtat.premier !== code){ pinEtat.premier = null; $('#pin-titre').textContent = 'Créez votre code PIN'; return erreurPin('Les codes ne correspondent pas. Recommencez.'); }
+  const sel = uuid(); localStorage.setItem('pin_'+S.uid, JSON.stringify({ sel, h: await sha256(sel + code) }));
+  pinEtat.saisie=''; toast('Code PIN enregistré.'); entrerDansApp();
+}
+$('#pin-oubli').onclick = async () => { if(await confirmer('Code oublié', 'Vous allez devoir vous reconnecter avec votre numéro et votre mot de passe.', 'Continuer')) deconnexion(true); };
+
+// Verrouillage après inactivité ou mise en arrière-plan
+let dernierGeste = Date.now(), cacheDepuis = null;
+['pointerdown','keydown','scroll'].forEach(ev => document.addEventListener(ev, () => dernierGeste = Date.now(), {passive:true}));
+const appOuverte = () => !$('#app').classList.contains('cache') && $('#v-pin').classList.contains('cache');
+function verrouiller(){ if(appOuverte() && localStorage.getItem('pin_'+S.uid)){ fermerTout(); lancerPin('ouvrir'); } }
+setInterval(() => { if(appOuverte() && Date.now() - dernierGeste > CONFIG.VERROU_MINUTES*60000) verrouiller(); }, 15000);
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden){ cacheDepuis = Date.now(); }
+  else { if(cacheDepuis && Date.now() - cacheDepuis > CONFIG.VERROU_MINUTES*60000) verrouiller(); cacheDepuis = null; if(appOuverte()){ synchroniser(); verifierRappels(); } }
+});
+
+// --- Déconnexion ---
+async function deconnexion(forcee){
+  if(!forcee && S.uid && nbEnAttente()){
+    if(navigator.onLine) await synchroniser();
+    if(nbEnAttente() && !(await confirmer('Données non envoyées', nbEnAttente()+' modification(s) ne sont pas encore envoyées au serveur. Elles restent gardées dans ce téléphone et seront envoyées à votre prochaine connexion.', 'Me déconnecter quand même', 'rouge'))) return;
+  }
+  const uid = S.uid; S.deconnexionVolontaire = true;
+  await fermerTout();
+  try{ await sb.auth.signOut(); }catch(e){}
+  if(uid){
+    localStorage.removeItem('pin_'+uid);
+    // On efface les données locales seulement si tout a été envoyé
+    if(!nbEnAttente()){ await DB.supprimer(uid); localStorage.removeItem('profil_'+uid); } else DB.fermer();
+  }
+  localStorage.removeItem('dernier_uid');
+  Object.assign(S, { uid:null, profil:null, commandes:[], vendeurs:[], depenses:[], photosAttente:[], deconnexionVolontaire:false });
+  Object.keys(urlsPhotos).forEach(k => { URL.revokeObjectURL(urlsPhotos[k]); delete urlsPhotos[k]; });
+  if('clearAppBadge' in navigator) navigator.clearAppBadge().catch(()=>{});
+  afficher('v-login');
+}
+document.addEventListener('click', e => { if(e.target.closest('[data-action="deconnexion"]')) deconnexion(); });
+
+/* =====================================================================
+   9. NAVIGATION
+   ===================================================================== */
+const TITRES = { accueil:"Aujourd'hui", commandes:'Mes commandes', rapports:'Rapports', plus:'Plus' };
+function allerOnglet(o){
+  S.onglet = o;
+  $$('nav.onglets [data-onglet]').forEach(b => b.classList.toggle('actif', b.dataset.onglet === o));
+  ['accueil','commandes','rapports','plus'].forEach(x => $('#t-'+x).classList.toggle('cache', x !== o));
+  $('#titre-page').textContent = TITRES[o];
+  rafraichirTout(); window.scrollTo(0,0);
+}
+$$('nav.onglets [data-onglet]').forEach(b => b.onclick = () => allerOnglet(b.dataset.onglet));
+$('nav.onglets [data-action="nouvelle-commande"]').onclick = () => formulaireCommande();
+$('#etat-synchro').onclick = () => synchroniser(true);
+
+function rafraichirTout(silencieux){
+  if(!S.uid || $('#app').classList.contains('cache') && !silencieux) { majEtatSynchro(); return; }
+  if(S.onglet==='accueil') rendreAccueil();
+  if(S.onglet==='commandes') rendreCommandes();
+  if(S.onglet==='rapports') rendreRapports();
+  if(S.onglet==='plus') rendrePlus();
+  rafraichirFeuilles(); majEtatSynchro(); majPastille();
+}
+
+/* =====================================================================
+   10. ACCUEIL — TABLEAU DE BORD
+   ===================================================================== */
+let invitationInstall = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); invitationInstall = e; if(S.onglet==='accueil') rafraichirTout(); });
+const estInstallee = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+
+function rendreAccueil(){
+  const b = bornes(S.periodeAccueil), r = synthese(b.du, b.au);
+  const aFaire = S.commandes.filter(c => ACTIFS.includes(c.statut) && c.date_prevue <= ymd())
+    .sort((x,y)=>(x.date_prevue+(x.heure_prevue||'')).localeCompare(y.date_prevue+(y.heure_prevue||'')));
+  const enAttenteTotal = S.commandes.filter(c => ACTIFS.includes(c.statut)).length;
+  const dette = detteVendeurs();
+  const prenom = (S.profil.nom||'').split(' ')[0];
+  const masquerInstall = localStorage.getItem('install_masquee');
+  const prochaine = prochaineLivraison(), alertes = alertesReversement();
+  const inviterRappels = localStorage.getItem(prefCle('rappels')) === null;
+  $('#t-accueil').innerHTML = `
+    ${!estInstallee() && !masquerInstall ? `<div class="banniere">${ic('telecharger')}<div>Installez l'appli sur votre écran d'accueil pour l'ouvrir comme une application.</div>
+       ${invitationInstall?'<button class="btn petit" id="btn-installer">Installer</button>':''}<button class="lien" id="btn-masquer-install" aria-label="Masquer">${ic('fermer')}</button></div>`:''}
+    <p style="margin:2px 2px 12px;color:var(--texte2)">Bonjour <b style="color:var(--texte)">${esc(prenom)}</b> — ${dateLisible(ymd())}</p>
+    ${inviterRappels ? `<div class="banniere">${ic('cloche')}<div>Recevez un rappel avant chaque livraison prévue à une heure précise.</div><button class="btn petit" id="btn-rappels">Activer</button><button class="lien" id="btn-rappels-non" aria-label="Masquer">${ic('fermer')}</button></div>`:''}
+    ${prochaine ? `<div class="carte prochaine"><div style="display:flex;align-items:center;gap:10px">${ic('horloge')}<div style="flex:1"><small style="color:var(--texte2)">Prochaine livraison — ${prochaine.c.heure_prevue.replace(':','h')} (${delaiTexte(prochaine.t)})</small><br><b>${esc(prochaine.c.client_nom)}</b>${prochaine.c.quartier?' · '+esc(prochaine.c.quartier):''}</div></div>
+       <div class="grille-btn" style="margin-top:10px"><button class="btn second petit" style="width:100%" data-prevenir="${prochaine.c.id}">${ic('envoi')} Prévenir</button><button class="btn second petit" style="width:100%" data-ouvrir="${prochaine.c.id}">Voir</button></div></div>`:''}
+    ${alertes.map(x => `<button class="alerte" data-releve="${x.id}">${ic('boutique')}<div><b>${esc(x.nom)} attend ${fmtF(x.montant)}</b><br><span style="font-size:13px">Argent non reversé depuis ${x.jours} jour(s).</span></div>${ic('chevron')}</button>`).join('')}
+    <div class="puces">${[['jour',"Aujourd'hui"],['7j','7 jours'],['mois','Ce mois'],['tout','Tout']].map(([k,l])=>`<button class="puce ${S.periodeAccueil===k?'actif':''}" data-per="${k}">${l}</button>`).join('')}</div>
+    <div class="kpis">
+      <button class="kpi vert" data-voir="livree"><b>${r.nb.livree}</b><span>Livrées</span></button>
+      <button class="kpi orange" data-voir="afaire"><b>${enAttenteTotal}</b><span>En attente (total)</span></button>
+      <button class="kpi violet" data-voir="reportee"><b>${r.nb.reportee}</b><span>Reportées</span></button>
+      <button class="kpi rouge" data-voir="echecs"><b>${r.nb.annulee + r.nb.retournee}</b><span>Annulées / retours</span></button>
+    </div>
+    <div class="carte">
+      <div class="titre-section" style="margin-top:0"><h3>Mon argent — ${esc(b.l.toLowerCase())}</h3>${r.taux!==null?`<span class="badge b-livree">${r.taux} % réussite</span>`:''}</div>
+      <div class="argent">
+        <span>Encaissé auprès des clients</span><span class="v">${fmtF(r.encaisse)}</span>
+        <span style="padding-left:12px;color:var(--texte2)">en espèces</span><span class="v" style="font-weight:500;color:var(--texte2)">${fmtF(r.especes)}</span>
+        <span style="padding-left:12px;color:var(--texte2)">en mobile money</span><span class="v" style="font-weight:500;color:var(--texte2)">${fmtF(r.mobile)}</span>
+        <span>Mes frais de livraison</span><span class="v pos">${fmtF(r.frais)}</span>
+        <span>Mes dépenses</span><span class="v neg">- ${fmtF(r.totalDep)}</span>
+        <span class="total">Mon gain net</span><span class="v total ${r.gainNet<0?'neg':''}">${fmtF(r.gainNet)}</span>
+      </div>
+    </div>
+    ${dette ? `<button class="banniere orange" style="width:100%;border:0;text-align:left;cursor:pointer" data-aller="vendeurs">${ic('boutique')}<div><b>${dette>0?'À reverser aux vendeurs':'Les vendeurs vous doivent'} : ${fmtF(Math.abs(dette))}</b><br><span style="font-size:13px">Toutes périodes. Touchez pour voir le détail par vendeur.</span></div>${ic('chevron')}</button>`:''}
+    <div class="titre-section"><h3>À livrer aujourd'hui (${aFaire.length})</h3><button class="lien" data-voir="afaire">Tout voir</button></div>
+    ${aFaire.length ? aFaire.slice(0,8).map(carteCommande).join('') : `<div class="carte vide-etat">${ic('colis')}<div>Aucune livraison en attente pour aujourd'hui.</div><div style="margin-top:12px"><button class="btn petit" data-action="nouvelle-commande">Nouvelle commande</button></div></div>`}
+    <div class="titre-section"><h3>Livraisons des 7 derniers jours</h3></div>
+    <div class="carte graph">${graphique7j()}</div>
+    <div class="grille-btn" style="margin-bottom:10px"><button class="btn second" data-action="nouvelle-depense">${ic('portefeuille')} Ajouter une dépense</button><button class="btn second" data-onglet-aller="rapports">${ic('fichier')} Rapports</button></div>`;
+  brancherCartes($('#t-accueil'));
+  $$('#t-accueil [data-per]').forEach(x => x.onclick = () => { S.periodeAccueil = x.dataset.per; rendreAccueil(); });
+  $$('#t-accueil [data-voir]').forEach(x => x.onclick = () => { S.filtreCmd = x.dataset.voir; S.recherche=''; allerOnglet('commandes'); });
+  $$('#t-accueil [data-onglet-aller]').forEach(x => x.onclick = () => allerOnglet(x.dataset.ongletAller));
+  $$('#t-accueil [data-releve]').forEach(x => x.onclick = () => releveVendeur(x.dataset.releve));
+  const br = $('#btn-rappels'); if(br) br.onclick = async () => { await activerRappels(true); rendreAccueil(); toast('Rappels activés ('+prefDelai()+' min avant). Réglage dans Plus > Mon compte.'); };
+  const brn = $('#btn-rappels-non'); if(brn) brn.onclick = () => { localStorage.setItem(prefCle('rappels'), '0'); rendreAccueil(); };
+  const bi = $('#btn-installer'); if(bi) bi.onclick = async () => { invitationInstall.prompt(); await invitationInstall.userChoice; invitationInstall = null; rendreAccueil(); };
+  const bm = $('#btn-masquer-install'); if(bm) bm.onclick = () => { localStorage.setItem('install_masquee','1'); rendreAccueil(); if(/iphone|ipad/i.test(navigator.userAgent)) toast('Sur iPhone : bouton Partager puis « Sur l\'écran d\'accueil ».'); };
+}
+
+function graphique7j(){
+  const jours = []; for(let i=6;i>=0;i--) jours.push(decaler(-i));
+  const vals = jours.map(j => S.commandes.filter(c => c.statut==='livree' && dateRef(c)===j).length);
+  const max = Math.max(1, ...vals), H = 120, L = 320, lb = L/7;
+  return `<svg viewBox="0 0 ${L} ${H+34}" role="img" aria-label="Livraisons par jour">${vals.map((v,i)=>{
+    const h = Math.round((v/max)*H*0.85), x = i*lb + lb*0.2, w = lb*0.6, y = H - h + 14;
+    const d = new Date(jours[i]+'T12:00:00');
+    return `<rect class="barre" x="${x}" y="${y}" width="${w}" height="${Math.max(h,2)}" rx="4"></rect>
+      <text class="val" x="${x+w/2}" y="${y-4}" text-anchor="middle">${v}</text>
+      <text x="${x+w/2}" y="${H+30}" text-anchor="middle">${JOURS[d.getDay()]} ${d.getDate()}</text>`; }).join('')}</svg>`;
+}
+
+/* =====================================================================
+   11. COMMANDES — LISTE
+   ===================================================================== */
+function carteCommande(c){
+  const a = argent(c), retard = enRetard(c);
+  const lieu = [c.quartier, c.repere].filter(Boolean).join(' · ') || 'Adresse non précisée';
+  const montantTxt = c.statut==='livree' ? 'Encaissé : ' : 'À encaisser : ';
+  return `<div class="cmd ${c.statut}" data-id="${c.id}">
+    <div class="corps" data-ouvrir="${c.id}">
+      <div class="l1"><b>${esc(c.client_nom)}</b>${(c.photos||[]).length?`<span class="badge b-photo" title="Photos">${ic('photo')}${c.photos.length}</span>`:''}${retard?'<span class="badge b-retard">En retard</span>':''}<span class="badge b-${c.statut}">${STATUTS[c.statut].l}</span></div>
+      <div class="l2">${ic('carte','')} ${esc(lieu)}</div>
+      <div class="l3"><span style="color:var(--texte2)">${esc(nomVendeur(c.vendeur_id))}${c.heure_prevue&&ACTIFS.includes(c.statut)?' · <b style="color:var(--texte)">'+esc(c.heure_prevue.replace(':','h'))+'</b>':''}</span><span>${montantTxt}<strong>${fmtF(a.encaisse)}</strong></span></div>
+    </div>
+    <div class="actions">
+      ${c.client_tel?`<a href="${lienAppel(c.client_tel)}">${ic('tel')} Appeler</a>`+(ACTIFS.includes(c.statut)?`<button data-prevenir="${c.id}">${ic('envoi')} Prévenir</button>`:`<a href="${lienWhatsApp(c.client_tel,'Bonjour '+c.client_nom+', ')}" target="_blank" rel="noopener">${ic('message')} WhatsApp</a>`):''}
+      ${ACTIFS.includes(c.statut)?`<button class="ok" data-livrer="${c.id}">${ic('check')} Livrée</button>`:`<button data-ouvrir="${c.id}">Détails</button>`}
+    </div></div>`;
+}
+function brancherCartes(racine){
+  $$('[data-ouvrir]', racine).forEach(x => x.onclick = () => ficheCommande(x.dataset.ouvrir));
+  $$('[data-livrer]', racine).forEach(x => x.onclick = e => { e.stopPropagation(); changerStatut(x.dataset.livrer, 'livree'); });
+  $$('[data-prevenir]', racine).forEach(x => x.onclick = e => { e.stopPropagation(); prevenirClient(x.dataset.prevenir); });
+  $$('[data-action="nouvelle-commande"]', racine).forEach(x => x.onclick = () => formulaireCommande());
+  $$('[data-action="nouvelle-depense"]', racine).forEach(x => x.onclick = () => formulaireDepense());
+  $$('[data-aller="vendeurs"]', racine).forEach(x => x.onclick = () => ecranVendeurs());
+}
+
+const FILTRES = [['afaire','À faire'],['livree','Livrées'],['reportee','Reportées'],['echecs','Annulées / retours'],['toutes','Toutes']];
+function filtrer(code){
+  switch(code){
+    case 'afaire': return S.commandes.filter(c => ACTIFS.includes(c.statut));
+    case 'livree': return S.commandes.filter(c => c.statut==='livree');
+    case 'reportee': return S.commandes.filter(c => c.statut==='reportee');
+    case 'echecs': return S.commandes.filter(c => c.statut==='annulee' || c.statut==='retournee');
+    default: return S.commandes.slice();
+  }
+}
+let limiteListe = 60;
+function rendreCommandes(){
+  const q = S.recherche.trim().toLowerCase(), qtel = q.replace(/\D/g,'');
+  let liste = filtrer(S.filtreCmd);
+  if(q) liste = liste.filter(c => [c.client_nom,c.quartier,c.repere,c.articles,c.numero,nomVendeur(c.vendeur_id)].join(' ').toLowerCase().includes(q) || (qtel.length>=3 && (c.client_tel||'').includes(qtel)));
+  const actif = S.filtreCmd === 'afaire';
+  liste.sort((x,y) => actif ? (x.date_prevue+(x.heure_prevue||'zz')).localeCompare(y.date_prevue+(y.heure_prevue||'zz')) : (dateRef(y)+y.maj_le).localeCompare(dateRef(x)+x.maj_le));
+  const compte = code => filtrer(code).length;
+  // Le champ de recherche est créé une seule fois (le clavier reste ouvert pendant la saisie)
+  if(!$('#rech')){
+    $('#t-commandes').innerHTML = `<div class="recherche">${ic('loupe')}<input class="saisie" id="rech" type="search" placeholder="Rechercher : client, quartier, téléphone…"></div><div class="puces" id="cmd-puces"></div><div id="cmd-liste"></div>`;
+    $('#rech').addEventListener('input', e => { S.recherche = e.target.value; limiteListe = 60; rendreCommandes(); });
+  }
+  if($('#rech').value !== S.recherche) $('#rech').value = S.recherche;
+  $('#cmd-puces').innerHTML = FILTRES.map(([k,l])=>`<button class="puce ${S.filtreCmd===k?'actif':''}" data-f="${k}">${l}<small>${compte(k)}</small></button>`).join('');
+  let html = '';
+  if(!liste.length) html += `<div class="carte vide-etat">${ic('colis')}<div>${q?'Aucun résultat.':'Aucune commande ici.'}</div></div>`;
+  let jourCourant = null;
+  liste.slice(0, limiteListe).forEach(c => {
+    const j = actif && c.date_prevue < ymd() ? 'retard' : dateRef(c);
+    if(j !== jourCourant){ jourCourant = j; html += `<div class="groupe-date">${j==='retard'?'En retard':libelleJour(j)}</div>`; }
+    html += carteCommande(c);
+  });
+  if(liste.length > limiteListe) html += `<button class="btn second" id="plus-cmd">Afficher plus (${liste.length - limiteListe})</button>`;
+  $('#cmd-liste').innerHTML = html;
+  brancherCartes($('#cmd-liste'));
+  $$('#t-commandes [data-f]').forEach(x => x.onclick = () => { S.filtreCmd = x.dataset.f; limiteListe = 60; rendreCommandes(); });
+  const pc = $('#plus-cmd'); if(pc) pc.onclick = () => { limiteListe += 60; rendreCommandes(); };
+}
+
+/* =====================================================================
+   12. COMMANDE — FORMULAIRE (création / modification / duplication)
+   ===================================================================== */
+function numeroSuivant(){
+  const a = ymd(), base = 'C' + a.slice(2).replace(/-/g,'');
+  const n = S.commandes.filter(c => (c.numero||'').startsWith(base)).length + 1;
+  return base + '-' + String(n).padStart(2,'0');
+}
+function clientsConnus(){
+  const m = new Map();
+  S.commandes.slice().sort((a,b)=>a.maj_le.localeCompare(b.maj_le)).forEach(c => { if(c.client_nom) m.set(c.client_nom.trim().toLowerCase(), c); });
+  return Array.from(m.values());
+}
+function formulaireCommande(id, dupliquer){
+  const orig = id ? S.commandes.find(c => c.id === id) : null;
+  const dernierFrais = S.commandes.length ? S.commandes.slice().sort((a,b)=>b.cree_le.localeCompare(a.cree_le))[0].frais_livraison : '';
+  const c = orig ? JSON.parse(JSON.stringify(orig)) : { frais_livraison:dernierFrais, frais_payes_par:'client', mode_paiement:'especes', deja_paye:false, date_prevue:ymd() };
+  if(dupliquer){ delete c.id; c.date_prevue = ymd(); c.statut = 'en_attente'; c.motif=null; c.livree_le=null; c.reverse=false; c.reverse_le=null; c.historique=[]; }
+  const modif = orig && !dupliquer;
+  const vend = S.vendeurs.filter(v => !v.archive || v.id === c.vendeur_id).sort((a,b)=>a.nom.localeCompare(b.nom));
+  const clients = clientsConnus();
+  const f = ouvrirFeuille({ titre: modif ? 'Modifier la commande' : (dupliquer ? 'Dupliquer la commande' : 'Nouvelle commande'), pied:'',
+    contenu: `<form id="f-cmd" autocomplete="off">
+      <div class="erreur" id="cmd-err"></div>
+      <label class="champ"><span>Nom du client <em>*</em></span><input class="saisie" id="c-nom" list="dl-clients" value="${esc(c.client_nom||'')}" placeholder="Ex. Mme Afi"></label>
+      <datalist id="dl-clients">${clients.map(x=>`<option value="${esc(x.client_nom)}">`).join('')}</datalist>
+      <label class="champ"><span>Téléphone du client <em>*</em></span><div class="prefixe"><b>+${CONFIG.INDICATIF}</b><input class="saisie" id="c-tel" type="tel" inputmode="numeric" value="${esc(telAffiche(c.client_tel||''))}" placeholder="90 12 34 56"></div></label>
+      <div class="ligne2">
+        <label class="champ"><span>Montant des articles <em>*</em></span><input class="saisie montant" id="c-art" inputmode="numeric" value="${c.montant_articles!=null?fmt(c.montant_articles):''}" placeholder="0"></label>
+        <label class="champ"><span>Frais de livraison</span><input class="saisie montant" id="c-frais" inputmode="numeric" value="${c.frais_livraison!==''&&c.frais_livraison!=null?fmt(c.frais_livraison):''}" placeholder="0"></label>
+      </div>
+      <label class="champ"><span>Vendeur / donneur d'ordre</span>
+        <select class="saisie" id="c-vend"><option value="">Sans vendeur (particulier)</option>${vend.map(v=>`<option value="${v.id}" ${v.id===c.vendeur_id?'selected':''}>${esc(v.nom)}</option>`).join('')}<option value="__nouveau">+ Nouveau vendeur…</option></select></label>
+      <div id="nouveau-vend" class="carte cache">
+        <label class="champ"><span>Nom du vendeur <em>*</em></span><input class="saisie" id="nv-nom" placeholder="Ex. Boutique Mode Lomé"></label>
+        <label class="champ" style="margin-bottom:0"><span>Téléphone du vendeur</span><input class="saisie" id="nv-tel" type="tel" inputmode="numeric"></label>
+      </div>
+      <label class="champ"><span>Quartier</span><input class="saisie" id="c-quartier" value="${esc(c.quartier||'')}" placeholder="Ex. Bè, Adidogomé, Agoè…"></label>
+      <div class="ligne2">
+        <label class="champ"><span>Date de livraison</span><input class="saisie" type="date" id="c-date" value="${esc(c.date_prevue||ymd())}"></label>
+        <label class="champ"><span>Heure (rappel)</span><input class="saisie" type="time" id="c-heure" value="${esc(c.heure_prevue||'')}"></label>
+      </div>
+      <details class="plus-details" ${modif?'open':''}>
+        <summary>Plus de détails</summary>
+        <label class="champ"><span>Point de repère</span><input class="saisie" id="c-repere" value="${esc(c.repere||'')}" placeholder="Ex. derrière la pharmacie, portail bleu"></label>
+        <label class="champ"><span>Position GPS</span><div class="grille-btn"><button type="button" class="btn second" id="c-gps-btn">${ic('carte')} Ma position</button><input class="saisie" id="c-gps" value="${esc(c.gps||'')}" placeholder="lat, long"></div><div class="sous">Touchez quand vous êtes chez le client : la position sera gardée pour la prochaine fois.</div></label>
+        <label class="champ"><span>Articles / description du colis</span><textarea class="saisie" id="c-articles" placeholder="Ex. 2 robes, 1 sac">${esc(c.articles||'')}</textarea></label>
+        <label class="champ"><span>Qui paie la livraison ?</span><div class="choix" data-choix="frais_payes_par"><button type="button" data-v="client">Le client</button><button type="button" data-v="vendeur">Le vendeur</button></div></label>
+        <label class="champ"><span>Le client paie en</span><div class="choix" data-choix="mode_paiement"><button type="button" data-v="especes">Espèces</button><button type="button" data-v="mobile_money">Mobile money</button></div></label>
+        <label class="interrupteur"><span>Articles déjà payés au vendeur<br><small style="color:var(--texte2)">Le client ne paie pas les articles à la livraison</small></span><input type="checkbox" id="c-paye" ${c.deja_paye?'checked':''}></label>
+        <label class="champ"><span>Note</span><textarea class="saisie" id="c-note">${esc(c.note||'')}</textarea></label>
+      </details>
+      <div class="carte" id="c-resume" style="font-size:15px"></div>
+    </form>` });
+  f.pied.innerHTML = `<button class="btn" id="c-enreg" type="button">${modif?'Enregistrer les modifications':'Enregistrer la commande'}</button>`;
+  const val = { frais_payes_par:c.frais_payes_par, mode_paiement:c.mode_paiement };
+  $$('[data-choix]', f.contenu).forEach(g => { const k = g.dataset.choix;
+    const maj = () => $$('button', g).forEach(b => b.classList.toggle('actif', b.dataset.v === val[k]));
+    $$('button', g).forEach(b => b.onclick = () => { val[k] = b.dataset.v; maj(); resume(); }); maj(); });
+  // Mise en forme des montants pendant la saisie (12500 -> 12 500)
+  $$('.montant', f.contenu).forEach(i => i.addEventListener('input', () => { const n = lireMontant(i.value); i.value = i.value.trim()==='' ? '' : fmt(n); resume(); }));
+  // Auto-complétion : client connu -> téléphone, quartier, repère, GPS
+  $('#c-nom').addEventListener('change', () => {
+    const x = clients.find(k => k.client_nom.trim().toLowerCase() === $('#c-nom').value.trim().toLowerCase()); if(!x) return;
+    if(!$('#c-tel').value) $('#c-tel').value = telAffiche(x.client_tel||'');
+    if(!$('#c-quartier').value) $('#c-quartier').value = x.quartier||'';
+    if(!$('#c-repere').value) $('#c-repere').value = x.repere||'';
+    if(!$('#c-gps').value) $('#c-gps').value = x.gps||'';
+  });
+  $('#c-vend').onchange = () => { $('#nouveau-vend').classList.toggle('cache', $('#c-vend').value !== '__nouveau'); resume(); };
+  $('#c-paye').onchange = resume;
+  $('#c-gps-btn').onclick = () => {
+    if(!navigator.geolocation) return toast('Position non disponible sur ce téléphone.');
+    $('#c-gps-btn').innerHTML = '<span class="chargement"></span>';
+    navigator.geolocation.getCurrentPosition(p => { $('#c-gps').value = p.coords.latitude.toFixed(6)+', '+p.coords.longitude.toFixed(6); $('#c-gps-btn').innerHTML = ic('carte')+' Ma position'; },
+      () => { toast('Impossible d\'obtenir la position. Activez la localisation.'); $('#c-gps-btn').innerHTML = ic('carte')+' Ma position'; }, { enableHighAccuracy:true, timeout:15000 });
+  };
+  function lireForm(){
+    return Object.assign({}, c, {
+      client_nom: $('#c-nom').value.trim(), client_tel: normTel($('#c-tel').value),
+      montant_articles: lireMontant($('#c-art').value), frais_livraison: lireMontant($('#c-frais').value),
+      quartier: $('#c-quartier').value.trim(), repere: $('#c-repere').value.trim(), gps: $('#c-gps').value.trim(),
+      articles: $('#c-articles').value.trim(), date_prevue: $('#c-date').value || ymd(), heure_prevue: $('#c-heure').value || null,
+      frais_payes_par: val.frais_payes_par, mode_paiement: val.mode_paiement, deja_paye: $('#c-paye').checked, note: $('#c-note').value.trim(),
+      vendeur_id: ['','__nouveau'].includes($('#c-vend').value) ? null : $('#c-vend').value
+    });
+  }
+  function resume(){
+    const x = lireForm(); if($('#c-vend').value === '__nouveau') x.vendeur_id = 'nouveau';
+    const a = argent(x);
+    let t = `<div class="argent"><span>Le client vous paie</span><span class="v">${fmtF(a.encaisse)}</span>`;
+    if(x.vendeur_id) t += `<span>${a.netVendeur>=0?'À reverser au vendeur':'Le vendeur vous doit'}</span><span class="v">${fmtF(Math.abs(a.netVendeur))}</span>`;
+    t += `<span>Votre gain (frais)</span><span class="v pos">${fmtF(a.gain)}</span></div>`;
+    $('#c-resume').innerHTML = t;
+  }
+  resume();
+  $('#c-enreg').onclick = async () => {
+    const err = $('#cmd-err'); err.textContent = '';
+    const x = lireForm();
+    if(!x.client_nom) return erreurChamp(err, 'Indiquez le nom du client.', '#c-nom');
+    if(!telValide(x.client_tel) && x.client_tel.length < 8) return erreurChamp(err, 'Indiquez un numéro de téléphone valide ('+CONFIG.LONGUEUR_NUMERO+' chiffres).', '#c-tel');
+    if($('#c-art').value.trim()==='') return erreurChamp(err, 'Indiquez le montant des articles (0 si rien à encaisser).', '#c-art');
+    if($('#c-vend').value === '__nouveau'){
+      const nom = $('#nv-nom').value.trim(); if(!nom) return erreurChamp(err, 'Indiquez le nom du nouveau vendeur.', '#nv-nom');
+      const v = await enregistrer('vendeurs', { id:uuid(), nom, telephone:normTel($('#nv-tel').value), note:'', archive:false, cree_le:maintenant() });
+      x.vendeur_id = v.id;
+    }
+    if(!modif){
+      x.id = uuid(); x.numero = numeroSuivant(); x.statut = 'en_attente'; x.cree_le = maintenant();
+      x.historique = [{ s:'en_attente', le:maintenant() }]; x.reverse = false; x.livree_le = null; x.motif = null;
+    }
+    await enregistrer('commandes', x);
+    await fermerFeuille();
+    toast(modif ? 'Commande modifiée.' : 'Commande enregistrée.');
+  };
+}
+function erreurChamp(boite, msg, sel){ boite.textContent = msg; boite.scrollIntoView({block:'center'}); const i = $(sel); if(i) i.focus(); }
+
+/* =====================================================================
+   13. COMMANDE — FICHE DÉTAILLÉE ET CHANGEMENTS DE STATUT
+   ===================================================================== */
+// Actions possibles selon le statut actuel
+const TRANSITIONS = {
+  en_attente:[['recuperee','Colis récupéré','second'],['livree','Livrée','vert'],['reportee','Reporter','second'],['annulee','Annuler','second']],
+  recuperee:[['livree','Livrée','vert'],['reportee','Reporter','second'],['retournee','Retourné au vendeur','second'],['annulee','Annuler','second']],
+  reportee:[['en_attente','Remettre en attente','second'],['livree','Livrée','vert'],['retournee','Retourné au vendeur','second'],['annulee','Annuler','second']],
+  livree:[['en_attente','Corriger : pas livrée','contour']],
+  annulee:[['en_attente','Réactiver la commande','second']],
+  retournee:[['en_attente','Réactiver la commande','second']]
+};
+function ficheCommande(id){
+  ouvrirFeuille({ titre:'Commande', rendre: f => {
+    const c = S.commandes.find(x => x.id === id); if(!c){ f.contenu.innerHTML = '<p>Commande introuvable.</p>'; return; }
+    const a = argent(c), v = vendeurDe(c.vendeur_id);
+    f.el.querySelector('.tete h2').textContent = 'Commande ' + (c.numero||'');
+    f.contenu.innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="badge b-${c.statut}">${STATUTS[c.statut].l}</span>${enRetard(c)?'<span class="badge b-retard">En retard</span>':''}
+        ${c.statut==='livree'&&c.vendeur_id&&a.netVendeur?`<span class="badge ${c.reverse?'b-reverse':'b-areverser'}">${c.reverse?'Reversé au vendeur':'À reverser'}</span>`:''}</div>
+      <div class="carte"><dl class="info">
+        <dt>Client</dt><dd>${esc(c.client_nom)}</dd>
+        <dt>Téléphone</dt><dd>${esc(telAffiche(c.client_tel))}</dd>
+        <dt>Quartier</dt><dd>${esc(c.quartier||'—')}</dd>
+        ${c.repere?`<dt>Repère</dt><dd>${esc(c.repere)}</dd>`:''}
+        <dt>Prévue le</dt><dd>${dateLisible(c.date_prevue)}${c.heure_prevue?' à '+esc(c.heure_prevue):''}</dd>
+        ${c.livree_le?`<dt>Livrée le</dt><dd>${dateLisible(c.livree_le)} à ${heure(c.livree_le)}</dd>`:''}
+        <dt>Vendeur</dt><dd>${esc(v?v.nom:'Sans vendeur')}</dd>
+        ${c.articles?`<dt>Articles</dt><dd>${esc(c.articles)}</dd>`:''}
+        ${c.note?`<dt>Note</dt><dd>${esc(c.note)}</dd>`:''}
+        ${c.motif?`<dt>Motif</dt><dd>${esc(c.motif)}</dd>`:''}
+      </dl></div>
+      <div class="grille-btn" style="margin-bottom:12px">
+        <a class="btn second" href="${lienAppel(c.client_tel)}">${ic('tel')} Appeler</a>
+        <button class="btn second" id="d-prevenir">${ic('envoi')} Prévenir</button>
+        ${c.gps?`<a class="btn second" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.gps)}" target="_blank" rel="noopener">${ic('carte')} Itinéraire</a>`:''}
+        ${v&&v.telephone?`<a class="btn second" href="${lienAppel(v.telephone)}">${ic('boutique')} Appeler vendeur</a>`:''}
+      </div>
+      <div class="carte"><div class="argent">
+        <span>Montant des articles</span><span class="v">${fmtF(c.montant_articles)}${c.deja_paye?' <small>(déjà payé)</small>':''}</span>
+        <span>Frais de livraison</span><span class="v">${fmtF(c.frais_livraison)} <small>(${c.frais_payes_par==='client'?'client':'vendeur'})</small></span>
+        <span>Le client paie (${c.mode_paiement==='mobile_money'?'mobile money':'espèces'})</span><span class="v">${fmtF(a.encaisse)}</span>
+        ${c.vendeur_id?`<span>${a.netVendeur>=0?'À reverser au vendeur':'Le vendeur vous doit'}</span><span class="v">${fmtF(Math.abs(a.netVendeur))}</span>`:''}
+        <span class="total">Votre gain</span><span class="v total pos">${fmtF(a.gain)}</span>
+      </div>
+      ${c.statut==='livree'&&c.vendeur_id&&a.netVendeur?`<label class="interrupteur" style="margin-top:8px;border-top:1px solid var(--ligne)"><span>Argent reversé au vendeur${c.reverse_le?'<br><small style="color:var(--texte2)">le '+dateCourte(c.reverse_le)+'</small>':''}</span><input type="checkbox" id="d-reverse" ${c.reverse?'checked':''}></label>`:''}
+      </div>
+      <h3 style="margin:16px 2px 8px;font-size:16px">Photos de preuve <small style="color:var(--texte2);font-weight:500">(${(c.photos||[]).length}/${CONFIG.PHOTOS_MAX})</small></h3>
+      ${(c.photos||[]).length?`<div class="photos">${c.photos.map(ph=>`<button type="button" data-photo="${ph.id}"><span class="chargement"></span></button>`).join('')}</div>`:''}
+      ${(c.photos||[]).length < CONFIG.PHOTOS_MAX ? `<button class="btn second" id="d-photo">${ic('photo')} Prendre une photo</button>` : ''}
+      <h3 style="margin:16px 2px 8px;font-size:16px">Changer le statut</h3>
+      <div class="pile">${TRANSITIONS[c.statut].map(([s,l,st])=>`<button class="btn ${st}" data-statut="${s}">${s==='livree'?ic('check'):''} ${l}</button>`).join('')}</div>
+      <h3 style="margin:18px 2px 8px;font-size:16px">Autres actions</h3>
+      <div class="grille-btn">
+        <button class="btn second" id="d-modif">${ic('crayon')} Modifier</button>
+        <button class="btn second" id="d-dupl">${ic('copie')} Dupliquer</button>
+        ${c.statut==='livree'?`<a class="btn second" style="grid-column:1/-1" href="${lienWhatsApp(c.client_tel, recuClient(c))}" target="_blank" rel="noopener">${ic('message')} Envoyer le reçu au client</a>`:''}
+      </div>
+      <h3 style="margin:18px 2px 8px;font-size:16px">Historique</h3>
+      <ul class="histo">${(c.historique||[]).slice().reverse().map(h=>`<li><b>${h.s==='message'?'Message au client':h.s==='photo'?'Photo ajoutée':STATUTS[h.s]?STATUTS[h.s].l:esc(h.s)}</b> — ${dateCourte(h.le)} ${heure(h.le)}${h.m?' — '+esc(h.m):''}</li>`).join('')}</ul>`;
+    $$('[data-statut]', f.contenu).forEach(b => b.onclick = () => changerStatut(id, b.dataset.statut));
+    $('#d-modif').onclick = async () => { await fermerFeuille(); formulaireCommande(id); };
+    $('#d-dupl').onclick = async () => { await fermerFeuille(); formulaireCommande(id, true); };
+    $('#d-prevenir').onclick = () => prevenirClient(id);
+    const bp = $('#d-photo'); if(bp) bp.onclick = () => ajouterPhoto(id);
+    remplirMiniatures(f.contenu, c);
+    const r = $('#d-reverse'); if(r) r.onchange = () => { const x = S.commandes.find(k=>k.id===id); x.reverse = r.checked; x.reverse_le = r.checked ? maintenant() : null; enregistrer('commandes', x); };
+  }});
+}
+
+async function changerStatut(id, nouveau){
+  const c = S.commandes.find(x => x.id === id); if(!c) return;
+  const avant = JSON.parse(JSON.stringify(c));
+  let motif = null, date = null;
+  const correction = c.statut === 'livree' && nouveau === 'en_attente';
+  if(['annulee','retournee','reportee'].includes(nouveau) || correction){
+    const titres = { annulee:'Motif de l\'annulation', retournee:'Motif du retour', reportee:'Motif du report' };
+    const r = await demanderMotif(correction ? 'Motif de la correction' : titres[nouveau], nouveau === 'reportee'); if(!r) return;
+    motif = r.motif; date = r.date;
+  }
+  c.statut = nouveau; c.motif = motif || (nouveau==='en_attente' ? null : c.motif);
+  if(date) c.date_prevue = date;
+  if(nouveau === 'livree') c.livree_le = maintenant();
+  else { c.livree_le = null; c.reverse = false; c.reverse_le = null; }
+  if(nouveau === 'en_attente' && c.date_prevue < ymd()) c.date_prevue = ymd();
+  c.historique = (c.historique||[]).concat([{ s:nouveau, le:maintenant(), m:motif||undefined }]);
+  await enregistrer('commandes', c);
+  if(nouveau === 'livree'){
+    if(prefPhotoLivraison()) return demanderPhotoLivraison(id, avant);
+    toast('Livrée : ' + c.client_nom, [{ libelle:'Photo', fn: () => ajouterPhoto(id) }, { libelle:'Annuler', fn: () => enregistrer('commandes', avant) }]);
+  }
+  else toast('Statut : ' + STATUTS[nouveau].l);
+}
+function recuClient(c){
+  const a = argent(c);
+  return `Bonjour ${c.client_nom},\nVotre colis${c.articles?' ('+c.articles+')':''} a bien été livré le ${dateCourte(c.livree_le)} à ${heure(c.livree_le)}.\n`
+    + (a.encaisse ? `Montant payé : ${fmtF(a.encaisse)} (${c.mode_paiement==='mobile_money'?'mobile money':'espèces'}).\n` : '')
+    + `Référence : ${c.numero||''}\nMerci pour votre confiance.\n${S.profil.nom}`;
+}
+
+/* =====================================================================
+   14. RAPPORTS — ÉTATS ET EXPORTS
+   ===================================================================== */
+function rendreRapports(){
+  const R = S.rapport, b = bornes(R.periode, R.du, R.au), r = synthese(b.du, b.au, R);
+  const vends = Object.values(r.vendeurs).sort((x,y)=>y.livrees-x.livrees);
+  $('#t-rapports').innerHTML = `
+    <div class="puces">${[['jour',"Aujourd'hui"],['hier','Hier'],['7j','7 jours'],['mois','Ce mois'],['moisprec','Mois dernier'],['tout','Tout'],['perso','Dates…']].map(([k,l])=>`<button class="puce ${R.periode===k?'actif':''}" data-p="${k}">${l}</button>`).join('')}</div>
+    ${R.periode==='perso'?`<div class="ligne2"><label class="champ"><span>Du</span><input class="saisie" type="date" id="r-du" value="${b.du}"></label><label class="champ"><span>Au</span><input class="saisie" type="date" id="r-au" value="${b.au}"></label></div>`:''}
+    <div class="ligne2">
+      <label class="champ"><span>Statut</span><select class="saisie" id="r-statut"><option value="tous">Tous</option>${Object.entries(STATUTS).map(([k,v])=>`<option value="${k}" ${R.statut===k?'selected':''}>${v.l}</option>`).join('')}</select></label>
+      <label class="champ"><span>Vendeur</span><select class="saisie" id="r-vend"><option value="tous">Tous</option><option value="aucun" ${R.vendeur==='aucun'?'selected':''}>Sans vendeur</option>${S.vendeurs.slice().sort((a,b)=>a.nom.localeCompare(b.nom)).map(v=>`<option value="${v.id}" ${R.vendeur===v.id?'selected':''}>${esc(v.nom)}</option>`).join('')}</select></label>
+    </div>
+    <div class="grille-btn" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:14px">
+      <button class="btn second petit" id="x-pdf" style="width:100%">${ic('fichier')} PDF</button>
+      <button class="btn second petit" id="x-xls" style="width:100%">${ic('telecharger')} Excel</button>
+      <a class="btn second petit" style="width:100%" target="_blank" rel="noopener" href="${lienWhatsApp('', texteRapport(r,b))}">${ic('partage')} WhatsApp</a>
+    </div>
+    <div class="carte"><div class="titre-section" style="margin-top:0"><h3>Synthèse — ${esc(b.l)}</h3><span class="badge b-recuperee">${r.total} commande(s)</span></div>
+      <table class="tableau"><thead><tr><th>Statut</th><th class="n">Nombre</th><th class="n">Montant client</th></tr></thead><tbody>
+      ${Object.entries(STATUTS).map(([k,v])=>`<tr><td><span class="badge b-${k}">${v.l}</span></td><td class="n">${r.nb[k]}</td><td class="n">${fmt(r.cmds.filter(c=>c.statut===k).reduce((s,c)=>s+argent(c).encaisse,0))}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td>Total</td><td class="n">${r.total}</td><td class="n">${fmt(r.cmds.reduce((s,c)=>s+argent(c).encaisse,0))}</td></tr></tfoot></table>
+      ${r.taux!==null?`<p class="sous">Taux de réussite : <b>${r.taux} %</b> des commandes terminées ont été livrées.</p>`:''}
+    </div>
+    <div class="carte"><h3 style="margin:0 0 10px;font-size:16px">Argent (commandes livrées)</h3><div class="argent">
+      <span>Encaissé auprès des clients</span><span class="v">${fmtF(r.encaisse)}</span>
+      <span style="padding-left:12px;color:var(--texte2)">en espèces</span><span class="v">${fmtF(r.especes)}</span>
+      <span style="padding-left:12px;color:var(--texte2)">en mobile money</span><span class="v">${fmtF(r.mobile)}</span>
+      <span>Déjà reversé aux vendeurs</span><span class="v">${fmtF(r.dejaReverse)}</span>
+      <span>Reste à reverser aux vendeurs</span><span class="v ${r.aReverser>0?'neg':''}">${fmtF(r.aReverser)}</span>
+      <span>Mes frais de livraison</span><span class="v pos">${fmtF(r.frais)}</span>
+      <span>Mes dépenses</span><span class="v neg">- ${fmtF(r.totalDep)}</span>
+      <span class="total">Mon gain net</span><span class="v total">${fmtF(r.gainNet)}</span>
+    </div></div>
+    <div class="carte"><h3 style="margin:0 0 10px;font-size:16px">Par vendeur</h3><div class="defile">
+      ${vends.length?`<table class="tableau"><thead><tr><th>Vendeur</th><th class="n">Livrées</th><th class="n">Échecs</th><th class="n">Frais</th><th class="n">Reste à reverser</th></tr></thead><tbody>
+      ${vends.map(v=>`<tr><td>${esc(v.nom)}</td><td class="n">${v.livrees}/${v.total}</td><td class="n">${v.echecs}</td><td class="n">${fmt(v.frais)}</td><td class="n">${fmt(v.reste)}</td></tr>`).join('')}</tbody></table>`:'<p class="sous">Aucune donnée.</p>'}
+    </div></div>
+    <div class="carte"><h3 style="margin:0 0 10px;font-size:16px">Détail des commandes (${r.cmds.length})</h3><div class="defile">
+      ${r.cmds.length?`<table class="tableau"><thead><tr><th>Date</th><th>Client</th><th>Statut</th><th class="n">Client paie</th><th class="n">Frais</th></tr></thead><tbody>
+      ${r.cmds.slice().sort((a,b)=>dateRef(a).localeCompare(dateRef(b))).map(c=>`<tr data-ouvrir="${c.id}" style="cursor:pointer"><td>${dateCourte(dateRef(c)).slice(0,5)}</td><td>${esc(c.client_nom)}</td><td><span class="badge b-${c.statut}">${STATUTS[c.statut].l}</span></td><td class="n">${fmt(argent(c).encaisse)}</td><td class="n">${fmt(c.frais_livraison)}</td></tr>`).join('')}</tbody></table>`:'<p class="sous">Aucune commande sur cette période.</p>'}
+    </div></div>
+    <div class="carte"><h3 style="margin:0 0 10px;font-size:16px">Dépenses (${r.depenses.length})</h3>
+      ${r.depenses.length?`<table class="tableau"><tbody>${r.depenses.sort((a,b)=>a.date.localeCompare(b.date)).map(d=>`<tr><td>${dateCourte(d.date).slice(0,5)}</td><td>${esc(d.categorie)}${d.note?' — '+esc(d.note):''}</td><td class="n">${fmt(d.montant)}</td></tr>`).join('')}</tbody><tfoot><tr><td></td><td>Total</td><td class="n">${fmt(r.totalDep)}</td></tr></tfoot></table>`:'<p class="sous">Aucune dépense sur cette période.</p>'}
+    </div>`;
+  $$('#t-rapports [data-p]').forEach(x => x.onclick = () => { R.periode = x.dataset.p; if(R.periode==='perso' && !R.du){ R.du = decaler(-30); R.au = ymd(); } rendreRapports(); });
+  const du = $('#r-du'), au = $('#r-au'); if(du){ du.onchange = () => { R.du = du.value; rendreRapports(); }; au.onchange = () => { R.au = au.value; rendreRapports(); }; }
+  $('#r-statut').onchange = e => { R.statut = e.target.value; rendreRapports(); };
+  $('#r-vend').onchange = e => { R.vendeur = e.target.value; rendreRapports(); };
+  $('#x-pdf').onclick = () => exporterPdf(r, b);
+  $('#x-xls').onclick = () => exporterExcel(r, b);
+  brancherCartes($('#t-rapports'));
+}
+function texteRapport(r, b){
+  return `*${CONFIG.NOM_APPLI} — ${S.profil.nom}*\nPériode : ${b.l}\n\nCommandes : ${r.total}\n- Livrées : ${r.nb.livree}\n- En attente / récupérées : ${r.nb.en_attente + r.nb.recuperee}\n- Reportées : ${r.nb.reportee}\n- Annulées / retours : ${r.nb.annulee + r.nb.retournee}\n\nEncaissé : ${fmtF(r.encaisse)}\nFrais de livraison : ${fmtF(r.frais)}\nDépenses : ${fmtF(r.totalDep)}\nGain net : ${fmtF(r.gainNet)}\nReste à reverser aux vendeurs : ${fmtF(r.aReverser)}`;
+}
+
+const URL_JSPDF = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
+const URL_AUTOTABLE = 'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js';
+const URL_XLSX = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+
+async function nouveauPdf(titre, sousTitre){
+  await chargerScript(URL_JSPDF); await chargerScript(URL_AUTOTABLE);
+  const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
+  doc.setFillColor(31,31,33); doc.rect(0,0,210,24,'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.text(titre, 14, 11);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.text(sousTitre, 14, 18);
+  doc.setTextColor(31,31,33);
+  doc.suiteY = 32;
+  doc.tableau = (tete, corps, pied, opts) => {
+    // Totaux numériques alignés à droite comme les colonnes de montants
+    if(pied) pied = pied.map(v => /^-?\s?[\d ]+$/.test(String(v)) && String(v).trim() !== '' ? { content:v, styles:{ halign:'right' } } : v);
+    doc.autoTable(Object.assign({ startY:doc.suiteY, head:[tete], body:corps, foot:pied?[pied]:undefined, theme:'grid', styles:{fontSize:8.5,cellPadding:1.8}, headStyles:{fillColor:[31,31,33]}, footStyles:{fillColor:[236,236,234],textColor:[31,31,33],fontStyle:'bold'}, margin:{left:14,right:14} }, opts||{})); doc.suiteY = doc.lastAutoTable.finalY + 8; };
+  doc.titreBloc = t => { if(doc.suiteY > 260){ doc.addPage(); doc.suiteY = 18; } doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text(t, 14, doc.suiteY); doc.setFont('helvetica','normal'); doc.suiteY += 4; };
+  return doc;
+}
+function piedPdf(doc){
+  const n = doc.getNumberOfPages();
+  for(let i=1;i<=n;i++){ doc.setPage(i); doc.setFontSize(7.5); doc.setTextColor(120); doc.text(`Édité le ${dateCourte(maintenant())} à ${heure(maintenant())} — ${CONFIG.NOM_APPLI} — page ${i}/${n}`, 105, 290, {align:'center'}); }
+}
+async function partagerFichier(blob, nom, texte){
+  const fichier = new File([blob], nom, { type: blob.type });
+  if(navigator.canShare && navigator.canShare({ files:[fichier] })){
+    try{ await navigator.share(Object.assign({ files:[fichier], title:nom }, texte ? { text:texte } : {})); return; }catch(e){ if(e.name==='AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nom; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+const nomFichier = (base, b) => (base + '_' + (S.profil.nom||'').replace(/\s+/g,'-') + '_' + b.du.replace(/^0000.*/,'debut') + '_' + b.au.replace(/^9999.*/,'fin')).replace(/[^\w.-]/g,'');
+
+async function exporterPdf(r, b){
+  try{
+    toast('Préparation du PDF…');
+    const doc = await nouveauPdf('Rapport de livraisons', `${S.profil.nom} — +${CONFIG.INDICATIF} ${telAffiche(S.profil.telephone)} — ${b.l}`);
+    doc.titreBloc('Synthèse des commandes');
+    doc.tableau(['Statut','Nombre','Montant client (F)'], Object.entries(STATUTS).map(([k,v])=>[v.l, r.nb[k], fmt(r.cmds.filter(c=>c.statut===k).reduce((s,c)=>s+argent(c).encaisse,0))]), ['Total', r.total, fmt(r.cmds.reduce((s,c)=>s+argent(c).encaisse,0))], {columnStyles:{1:{halign:'right'},2:{halign:'right'}}});
+    doc.titreBloc('Argent (commandes livrées)');
+    doc.tableau(['Rubrique','Montant (F)'], [['Encaissé auprès des clients',fmt(r.encaisse)],['  dont espèces',fmt(r.especes)],['  dont mobile money',fmt(r.mobile)],['Déjà reversé aux vendeurs',fmt(r.dejaReverse)],['Reste à reverser aux vendeurs',fmt(r.aReverser)],['Frais de livraison (gain brut)',fmt(r.frais)],['Dépenses','- '+fmt(r.totalDep)]], ['Gain net', fmt(r.gainNet)], {columnStyles:{1:{halign:'right'}}});
+    const vends = Object.values(r.vendeurs);
+    if(vends.length){ doc.titreBloc('Par vendeur'); doc.tableau(['Vendeur','Commandes','Livrées','Échecs','Articles (F)','Frais (F)','Net vendeur (F)','Reste à reverser (F)'], vends.map(v=>[v.nom,v.total,v.livrees,v.echecs,fmt(v.articles),fmt(v.frais),fmt(v.net),fmt(v.reste)]), null, {columnStyles:{1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right'},7:{halign:'right'}}}); }
+    if(r.cmds.length){ doc.titreBloc('Détail des commandes'); doc.tableau(['Date','N°','Client','Quartier','Vendeur','Statut','Client paie','Frais'], r.cmds.slice().sort((a,b)=>dateRef(a).localeCompare(dateRef(b))).map(c=>[dateCourte(dateRef(c)),c.numero||'',c.client_nom,c.quartier||'',nomVendeur(c.vendeur_id),STATUTS[c.statut].l+(c.motif&&c.statut!=='livree'?' ('+c.motif+')':''),fmt(argent(c).encaisse),fmt(c.frais_livraison)]), null, {columnStyles:{6:{halign:'right'},7:{halign:'right'}}}); }
+    if(r.depenses.length){ doc.titreBloc('Dépenses'); doc.tableau(['Date','Catégorie','Note','Montant (F)'], r.depenses.map(d=>[dateCourte(d.date),d.categorie,d.note||'',fmt(d.montant)]), ['','Total','',fmt(r.totalDep)], {columnStyles:{3:{halign:'right'}}}); }
+    piedPdf(doc);
+    await partagerFichier(doc.output('blob'), nomFichier('Rapport', b) + '.pdf');
+  }catch(e){ toast(e.message || 'Export impossible.'); }
+}
+async function exporterExcel(r, b){
+  try{
+    toast('Préparation du fichier Excel…');
+    await chargerScript(URL_XLSX);
+    const X = window.XLSX, wb = X.utils.book_new();
+    const synth = [[CONFIG.NOM_APPLI+' — Rapport de livraisons'],['Livreur', S.profil.nom],['Période', b.l],[],['Statut','Nombre','Montant client (F)']]
+      .concat(Object.entries(STATUTS).map(([k,v])=>[v.l, r.nb[k], r.cmds.filter(c=>c.statut===k).reduce((s,c)=>s+argent(c).encaisse,0)]))
+      .concat([['Total', r.total, r.cmds.reduce((s,c)=>s+argent(c).encaisse,0)],[],['Encaissé auprès des clients', r.encaisse],['dont espèces', r.especes],['dont mobile money', r.mobile],['Déjà reversé aux vendeurs', r.dejaReverse],['Reste à reverser aux vendeurs', r.aReverser],['Frais de livraison', r.frais],['Dépenses', r.totalDep],['Gain net', r.gainNet]]);
+    const ws1 = X.utils.aoa_to_sheet(synth); ws1['!cols'] = [{wch:32},{wch:16},{wch:20}]; X.utils.book_append_sheet(wb, ws1, 'Synthèse');
+    const ws2 = X.utils.json_to_sheet(r.cmds.map(c=>({ 'Date':dateRef(c), 'N°':c.numero||'', 'Client':c.client_nom, 'Téléphone':telAffiche(c.client_tel), 'Quartier':c.quartier||'', 'Repère':c.repere||'', 'Vendeur':nomVendeur(c.vendeur_id), 'Articles':c.articles||'', 'Statut':STATUTS[c.statut].l, 'Motif':c.motif||'', 'Montant articles':c.montant_articles, 'Frais livraison':c.frais_livraison, 'Frais payés par':c.frais_payes_par, 'Articles déjà payés':c.deja_paye?'Oui':'Non', 'Mode de paiement':c.mode_paiement==='mobile_money'?'Mobile money':'Espèces', 'Client paie':argent(c).encaisse, 'Net vendeur':argent(c).netVendeur, 'Reversé':c.reverse?'Oui':'Non', 'Livrée le':c.livree_le?dateCourte(c.livree_le)+' '+heure(c.livree_le):'' })));
+    X.utils.book_append_sheet(wb, ws2, 'Commandes');
+    const ws3 = X.utils.json_to_sheet(Object.values(r.vendeurs).map(v=>({ 'Vendeur':v.nom, 'Commandes':v.total, 'Livrées':v.livrees, 'Échecs':v.echecs, 'Articles':v.articles, 'Frais':v.frais, 'Net vendeur':v.net, 'Déjà reversé':v.reverse, 'Reste à reverser':v.reste })));
+    X.utils.book_append_sheet(wb, ws3, 'Par vendeur');
+    const ws4 = X.utils.json_to_sheet(r.depenses.map(d=>({ 'Date':d.date, 'Catégorie':d.categorie, 'Note':d.note||'', 'Montant':d.montant })));
+    X.utils.book_append_sheet(wb, ws4, 'Dépenses');
+    const out = X.write(wb, { bookType:'xlsx', type:'array' });
+    await partagerFichier(new Blob([out], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), nomFichier('Rapport', b) + '.xlsx');
+  }catch(e){ toast(e.message || 'Export impossible.'); }
+}
+
+/* =====================================================================
+   15. PLUS — VENDEURS, DÉPENSES, MON COMPTE, ADMINISTRATION
+   ===================================================================== */
+function rendrePlus(){
+  const admin = S.profil.role === 'admin' && S.profil.actif;
+  const lignes = [
+    ['vendeurs','boutique','Mes vendeurs','Relevés, argent à reverser'],
+    ['depenses','portefeuille','Mes dépenses','Carburant, réparations, crédit…'],
+    ['compte','compte','Mon compte','Mot de passe, code PIN, affichage'],
+  ];
+  if(admin) lignes.push(['admin','bouclier','Administration','Livreurs, accès, activité']);
+  $('#t-plus').innerHTML = lignes.map(([k,i,t,s]) => `<button class="carte" data-plus="${k}" style="display:flex;align-items:center;gap:14px;width:100%;border:0;text-align:left;cursor:pointer">
+      <span style="width:44px;height:44px;border-radius:12px;background:var(--gris-clair);display:grid;place-items:center">${ic(i)}</span>
+      <span style="flex:1"><b style="display:block">${t}</b><small style="color:var(--texte2)">${s}</small></span>${ic('chevron')}</button>`).join('')
+    + `<p class="sous" style="text-align:center;margin-top:20px">${esc(CONFIG.NOM_APPLI)} — version ${CONFIG.VERSION}</p>`;
+  $$('#t-plus [data-plus]').forEach(b => b.onclick = () => ({ vendeurs:ecranVendeurs, depenses:ecranDepenses, compte:ecranCompte, admin:ecranAdmin })[b.dataset.plus]());
+}
+
+/* ---------- Vendeurs ---------- */
+function ecranVendeurs(){
+  ouvrirFeuille({ titre:'Mes vendeurs', pied:'', rendre: f => {
+    const liste = S.vendeurs.slice().sort((a,b)=>(a.archive-b.archive) || a.nom.localeCompare(b.nom));
+    f.contenu.innerHTML = liste.length ? liste.map(v => { const d = detteVendeurs(v.id), n = S.commandes.filter(c=>c.vendeur_id===v.id).length;
+      return `<button class="carte" data-v="${v.id}" style="display:flex;align-items:center;gap:12px;width:100%;border:0;text-align:left;cursor:pointer;${v.archive?'opacity:.55':''}">
+        <span style="flex:1"><b style="display:block">${esc(v.nom)}${v.archive?' (archivé)':''}</b><small style="color:var(--texte2)">${n} commande(s)${v.telephone?' · '+esc(telAffiche(v.telephone)):''}</small></span>
+        ${d?`<span class="badge ${d>0?'b-areverser':'b-reverse'}">${d>0?'À reverser':'Vous doit'} ${fmt(Math.abs(d))}</span>`:''}${ic('chevron')}</button>`; }).join('')
+      : `<div class="vide-etat">${ic('boutique')}<div>Aucun vendeur. Ajoutez les boutiques ou vendeuses qui vous confient des colis.</div></div>`;
+    f.pied.innerHTML = '<button class="btn" id="v-ajout">'+ic('plus')+' Ajouter un vendeur</button>';
+    $('#v-ajout', f.pied).onclick = () => formulaireVendeur();
+    $$('[data-v]', f.contenu).forEach(b => b.onclick = () => releveVendeur(b.dataset.v));
+  }});
+}
+function formulaireVendeur(id){
+  const v = id ? Object.assign({}, vendeurDe(id)) : { id:uuid(), nom:'', telephone:'', note:'', archive:false, cree_le:maintenant() };
+  const f = ouvrirFeuille({ titre: id ? 'Modifier le vendeur' : 'Nouveau vendeur', pied:'', contenu:`
+    <div class="erreur" id="fv-err"></div>
+    <label class="champ"><span>Nom <em>*</em></span><input class="saisie" id="fv-nom" value="${esc(v.nom)}" placeholder="Ex. Boutique Mode Lomé"></label>
+    <label class="champ"><span>Téléphone</span><div class="prefixe"><b>+${CONFIG.INDICATIF}</b><input class="saisie" id="fv-tel" type="tel" inputmode="numeric" value="${esc(telAffiche(v.telephone||''))}"></div></label>
+    <label class="champ"><span>Note</span><textarea class="saisie" id="fv-note">${esc(v.note||'')}</textarea></label>
+    ${id?`<label class="interrupteur"><span>Archiver (ne plus proposer dans les nouvelles commandes)</span><input type="checkbox" id="fv-arch" ${v.archive?'checked':''}></label>`:''}` });
+  f.pied.innerHTML = '<button class="btn" id="fv-ok">Enregistrer</button>';
+  $('#fv-ok', f.pied).onclick = async () => {
+    v.nom = $('#fv-nom').value.trim(); v.telephone = normTel($('#fv-tel').value); v.note = $('#fv-note').value.trim();
+    if($('#fv-arch')) v.archive = $('#fv-arch').checked;
+    if(!v.nom){ $('#fv-err').textContent = 'Le nom est obligatoire.'; return; }
+    await enregistrer('vendeurs', v); await fermerFeuille(); toast('Vendeur enregistré.');
+  };
+}
+function releveVendeur(id){
+  const etat = { periode:'tout' };
+  ouvrirFeuille({ titre:'Relevé vendeur', pied:'', rendre: f => {
+    const v = vendeurDe(id); if(!v) return;
+    const b = bornes(etat.periode);
+    const cmds = S.commandes.filter(c => c.vendeur_id===id && dateRef(c)>=b.du && dateRef(c)<=b.au).sort((a,c)=>dateRef(a).localeCompare(dateRef(c)));
+    const liv = cmds.filter(c => c.statut==='livree');
+    const tot = liv.reduce((s,c)=>{ const a = argent(c); s.art += c.deja_paye?0:c.montant_articles; s.frais += c.frais_payes_par==='vendeur'?c.frais_livraison:0; s.net += a.netVendeur; if(!c.reverse) s.reste += a.netVendeur; return s; }, {art:0,frais:0,net:0,reste:0});
+    f.el.querySelector('.tete h2').textContent = v.nom;
+    f.contenu.innerHTML = `
+      <div class="puces">${[['jour',"Aujourd'hui"],['7j','7 jours'],['mois','Ce mois'],['moisprec','Mois dernier'],['tout','Tout']].map(([k,l])=>`<button class="puce ${etat.periode===k?'actif':''}" data-p="${k}">${l}</button>`).join('')}</div>
+      <div class="carte"><div class="argent">
+        <span>Colis confiés / livrés</span><span class="v">${cmds.length} / ${liv.length}</span>
+        <span>Articles encaissés pour le vendeur</span><span class="v">${fmtF(tot.art)}</span>
+        <span>Frais de livraison retenus</span><span class="v">- ${fmtF(tot.frais)}</span>
+        <span>Net dû au vendeur</span><span class="v">${fmtF(tot.net)}</span>
+        <span class="total">Reste à reverser</span><span class="v total ${tot.reste>0?'neg':''}">${fmtF(tot.reste)}</span>
+      </div></div>
+      <div class="grille-btn" style="margin-bottom:12px">
+        ${v.telephone?`<a class="btn second" href="${lienWhatsApp(v.telephone, texteReleve(v, b, cmds, liv, tot))}" target="_blank" rel="noopener">${ic('message')} Envoyer le relevé</a>`:`<a class="btn second" href="${lienWhatsApp('', texteReleve(v, b, cmds, liv, tot))}" target="_blank" rel="noopener">${ic('message')} Partager le relevé</a>`}
+        <button class="btn second" id="rv-pdf">${ic('fichier')} PDF</button>
+        ${tot.reste?`<button class="btn vert" style="grid-column:1/-1" id="rv-reverse">${ic('check')} J'ai reversé ${fmtF(tot.reste)}</button>`:''}
+      </div>
+      ${cmds.length?`<div class="defile"><table class="tableau"><thead><tr><th>Date</th><th>Client</th><th>Statut</th><th class="n">Net</th></tr></thead><tbody>
+        ${cmds.map(c=>`<tr data-ouvrir="${c.id}" style="cursor:pointer"><td>${dateCourte(dateRef(c)).slice(0,5)}</td><td>${esc(c.client_nom)}</td><td><span class="badge b-${c.statut}">${STATUTS[c.statut].l}</span>${c.statut==='livree'&&argent(c).netVendeur?(c.reverse?' <span class="badge b-reverse">Reversé</span>':''):''}</td><td class="n">${c.statut==='livree'?fmt(argent(c).netVendeur):'—'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="sous">Aucune commande sur cette période.</p>'}`;
+    f.pied.innerHTML = `<div class="grille-btn">${v.telephone?`<a class="btn second" href="${lienAppel(v.telephone)}">${ic('tel')} Appeler</a>`:'<span></span>'}<button class="btn second" id="rv-modif">${ic('crayon')} Modifier</button></div>`;
+    $$('[data-p]', f.contenu).forEach(x => x.onclick = () => { etat.periode = x.dataset.p; f.rendre(f); });
+    brancherCartes(f.contenu);
+    $('#rv-modif', f.pied).onclick = () => formulaireVendeur(id);
+    $('#rv-pdf', f.contenu).onclick = () => pdfReleve(v, b, cmds, tot);
+    const rr = $('#rv-reverse', f.contenu);
+    if(rr) rr.onclick = async () => {
+      if(!(await confirmer('Confirmer le reversement', `Vous confirmez avoir reversé ${fmtF(tot.reste)} à ${v.nom} ? Les commandes livrées de la période seront marquées « reversé ».`, 'Oui, reversé', 'vert'))) return;
+      const le = maintenant();
+      for(const c of liv.filter(c=>!c.reverse)){ c.reverse = true; c.reverse_le = le; await enregistrer('commandes', c); }
+      toast('Reversement enregistré.');
+    };
+  }});
+}
+function texteReleve(v, b, cmds, liv, tot){
+  return `*Relevé — ${v.nom}*\nLivreur : ${S.profil.nom}\nPériode : ${b.l}\n\nColis confiés : ${cmds.length}\nColis livrés : ${liv.length}\n`
+    + liv.map(c=>`- ${dateCourte(dateRef(c)).slice(0,5)} ${c.client_nom} : ${fmtF(argent(c).netVendeur)}${c.reverse?' (reversé)':''}`).join('\n')
+    + `\n\nArticles encaissés : ${fmtF(tot.art)}\nFrais retenus : ${fmtF(tot.frais)}\nNet dû : ${fmtF(tot.net)}\n*Reste à reverser : ${fmtF(tot.reste)}*`;
+}
+async function pdfReleve(v, b, cmds, tot){
+  try{
+    toast('Préparation du PDF…');
+    const doc = await nouveauPdf('Relevé vendeur — ' + v.nom, `Livreur : ${S.profil.nom} — ${b.l}`);
+    doc.tableau(['Date','N°','Client','Statut','Articles (F)','Frais retenus (F)','Net (F)','Reversé'], cmds.map(c=>{ const a = argent(c), l = c.statut==='livree';
+      return [dateCourte(dateRef(c)), c.numero||'', c.client_nom, STATUTS[c.statut].l, l?fmt(c.deja_paye?0:c.montant_articles):'', l?fmt(c.frais_payes_par==='vendeur'?c.frais_livraison:0):'', l?fmt(a.netVendeur):'', l?(c.reverse?'Oui':'Non'):'']; }),
+      ['','','','Total', fmt(tot.art), fmt(tot.frais), fmt(tot.net), ''], {columnStyles:{4:{halign:'right'},5:{halign:'right'},6:{halign:'right'}}});
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.text('Reste à reverser : ' + fmtF(tot.reste), 14, doc.suiteY);
+    piedPdf(doc);
+    await partagerFichier(doc.output('blob'), nomFichier('Releve_'+v.nom, b) + '.pdf');
+  }catch(e){ toast(e.message || 'Export impossible.'); }
+}
+
+/* ---------- Dépenses ---------- */
+function ecranDepenses(){
+  const etat = { periode:'mois' };
+  ouvrirFeuille({ titre:'Mes dépenses', pied:'', rendre: f => {
+    const b = bornes(etat.periode);
+    const deps = S.depenses.filter(d => !d.supprime && d.date>=b.du && d.date<=b.au).sort((a,c)=>c.date.localeCompare(a.date) || c.cree_le.localeCompare(a.cree_le));
+    const parCat = {}; deps.forEach(d => parCat[d.categorie] = (parCat[d.categorie]||0) + d.montant);
+    const total = deps.reduce((s,d)=>s+d.montant,0);
+    f.contenu.innerHTML = `
+      <div class="puces">${[['jour',"Aujourd'hui"],['7j','7 jours'],['mois','Ce mois'],['moisprec','Mois dernier'],['tout','Tout']].map(([k,l])=>`<button class="puce ${etat.periode===k?'actif':''}" data-p="${k}">${l}</button>`).join('')}</div>
+      <div class="carte"><div class="argent">${Object.entries(parCat).sort((a,c)=>c[1]-a[1]).map(([k,m])=>`<span>${esc(k)}</span><span class="v">${fmtF(m)}</span>`).join('')}
+        <span class="total">Total</span><span class="v total">${fmtF(total)}</span></div></div>
+      ${deps.length ? deps.map(d=>`<div class="carte" style="display:flex;align-items:center;gap:10px;cursor:pointer" data-d="${d.id}"><span style="flex:1"><b>${esc(d.categorie)}</b><br><small style="color:var(--texte2)">${dateLisible(d.date)}${d.note?' · '+esc(d.note):''}</small></span><b>${fmtF(d.montant)}</b></div>`).join('')
+        : `<div class="vide-etat">${ic('portefeuille')}<div>Aucune dépense sur cette période.</div></div>`}`;
+    f.pied.innerHTML = '<button class="btn" id="d-ajout">'+ic('plus')+' Ajouter une dépense</button>';
+    $('#d-ajout', f.pied).onclick = () => formulaireDepense();
+    $$('[data-p]', f.contenu).forEach(x => x.onclick = () => { etat.periode = x.dataset.p; f.rendre(f); });
+    $$('[data-d]', f.contenu).forEach(x => x.onclick = () => formulaireDepense(x.dataset.d));
+  }});
+}
+function formulaireDepense(id){
+  const d = id ? Object.assign({}, S.depenses.find(x=>x.id===id)) : { id:uuid(), date:ymd(), categorie:'Carburant', montant:'', note:'', supprime:false, cree_le:maintenant() };
+  const f = ouvrirFeuille({ titre: id ? 'Modifier la dépense' : 'Nouvelle dépense', pied:'', contenu:`
+    <div class="erreur" id="fd-err"></div>
+    <label class="champ"><span>Catégorie</span><div class="choix" id="fd-cat">${CATEGORIES_DEP.map(c=>`<button type="button" data-c="${esc(c)}" style="flex:1 1 45%">${esc(c)}</button>`).join('')}</div></label>
+    <label class="champ"><span>Montant <em>*</em></span><input class="saisie" id="fd-mt" inputmode="numeric" value="${d.montant!==''?fmt(d.montant):''}" placeholder="0"></label>
+    <label class="champ"><span>Date</span><input class="saisie" type="date" id="fd-date" value="${esc(d.date)}"></label>
+    <label class="champ"><span>Note</span><input class="saisie" id="fd-note" value="${esc(d.note||'')}" placeholder="Facultatif"></label>` });
+  const majCat = () => $$('#fd-cat button').forEach(b => b.classList.toggle('actif', b.dataset.c === d.categorie));
+  $$('#fd-cat button').forEach(b => b.onclick = () => { d.categorie = b.dataset.c; majCat(); }); majCat();
+  const mt = $('#fd-mt'); mt.oninput = () => { mt.value = mt.value.trim()==='' ? '' : fmt(lireMontant(mt.value)); };
+  f.pied.innerHTML = `<div class="${id?'grille-btn':''}">${id?'<button class="btn second" id="fd-sup">Supprimer</button>':''}<button class="btn" id="fd-ok">Enregistrer</button></div>`;
+  $('#fd-ok', f.pied).onclick = async () => {
+    d.montant = lireMontant(mt.value); d.date = $('#fd-date').value || ymd(); d.note = $('#fd-note').value.trim();
+    if(!d.montant){ $('#fd-err').textContent = 'Indiquez le montant.'; return; }
+    await enregistrer('depenses', d); await fermerFeuille(); toast('Dépense enregistrée.');
+  };
+  const sup = $('#fd-sup', f.pied);
+  if(sup) sup.onclick = async () => { if(!(await confirmer('Supprimer la dépense', 'Cette dépense ne sera plus comptée.', 'Supprimer', 'rouge'))) return; d.supprime = true; await enregistrer('depenses', d); await fermerFeuille(); toast('Dépense supprimée.'); };
+}
+
+/* ---------- Mon compte ---------- */
+function appliquerTheme(){ document.body.classList.toggle('sombre', localStorage.getItem('theme') === 'sombre'); }
+function ecranCompte(){
+  ouvrirFeuille({ titre:'Mon compte', rendre: async f => {
+    const ds = DB.db ? await DB.lireMeta('derniere_synchro') : null;
+    f.contenu.innerHTML = `
+      <div class="carte"><dl class="info"><dt>Nom</dt><dd>${esc(S.profil.nom)}</dd><dt>Téléphone</dt><dd>+${CONFIG.INDICATIF} ${esc(telAffiche(S.profil.telephone))}</dd><dt>Rôle</dt><dd>${S.profil.role==='admin'?'Administrateur':'Livreur'}</dd></dl></div>
+      <div class="carte"><b>Synchronisation</b><p class="sous">Dernière synchronisation : ${ds ? dateCourte(ds)+' à '+heure(ds) : 'jamais'}<br>Modifications en attente d'envoi : ${nbEnAttente()}</p>
+        <button class="btn second" id="mc-sync">${ic('synchro')} Synchroniser maintenant</button></div>
+      <div class="carte"><b>Rappels et photos</b>
+        <label class="interrupteur"><span>Rappels de livraison<br><small style="color:var(--texte2)">Avant chaque livraison à heure prévue, résumé du jour, argent à reverser</small></span><input type="checkbox" id="mc-rappels" ${prefRappels()?'checked':''}></label>
+        ${prefRappels()?`<label class="champ" style="margin:4px 0 8px"><span>Me prévenir</span><div class="choix" id="mc-delai">${[15,30,60].map(n=>`<button type="button" data-d="${n}" class="${prefDelai()===n?'actif':''}">${n} min avant</button>`).join('')}</div></label>
+        ${notifPossible() && Notification.permission==='denied'?'<p class="erreur">Les notifications sont bloquées pour cette appli dans les réglages du téléphone : les rappels s\'affichent seulement quand l\'appli est ouverte.</p>':''}
+        <button class="btn second petit" id="mc-test" style="width:100%;margin-bottom:6px">${ic('cloche')} Tester un rappel</button>`:''}
+        <label class="interrupteur" style="border-top:1px solid var(--ligne)"><span>Photo à chaque livraison<br><small style="color:var(--texte2)">L'appli demande une photo du colis remis</small></span><input type="checkbox" id="mc-photo" ${prefPhotoLivraison()?'checked':''}></label>
+      </div>
+      <div class="pile">
+        <button class="btn second" id="mc-mdp">${ic('cadenas')} Changer mon mot de passe</button>
+        <button class="btn second" id="mc-pin">${ic('cadenas')} Changer mon code PIN</button>
+        <label class="carte interrupteur" style="margin:0"><span>Mode sombre</span><input type="checkbox" id="mc-sombre" ${localStorage.getItem('theme')==='sombre'?'checked':''}></label>
+        <button class="btn rouge" data-action="deconnexion">Se déconnecter</button>
+      </div>`;
+    $('#mc-sync').onclick = async () => { await synchroniser(true); f.rendre(f); };
+    $('#mc-pin').onclick = async () => { await fermerTout(); lancerPin('changer'); };
+    $('#mc-sombre').onchange = e => { localStorage.setItem('theme', e.target.checked ? 'sombre' : 'clair'); appliquerTheme(); };
+    $('#mc-rappels').onchange = async e => { await activerRappels(e.target.checked); f.rendre(f); };
+    $$('#mc-delai [data-d]').forEach(b => b.onclick = () => { localStorage.setItem(prefCle('delai'), b.dataset.d); f.rendre(f); });
+    const mt = $('#mc-test'); if(mt) mt.onclick = () => {
+      const titre = 'Rappel de test', corps = 'Les rappels fonctionnent sur ce téléphone.';
+      if(notifPossible() && Notification.permission === 'granted'){
+        // Affiché comme une vraie notification, même appli ouverte
+        navigator.serviceWorker && navigator.serviceWorker.getRegistration().then(reg => reg ? reg.showNotification(titre, { body:corps, icon:'icone-192.png' }) : new Notification(titre, { body:corps })).catch(() => toast(corps));
+      } else toast(corps + ' (dans l\'appli seulement)');
+    };
+    $('#mc-photo').onchange = e => { localStorage.setItem(prefCle('photo'), e.target.checked ? '1' : '0'); };
+    $('#mc-mdp').onclick = () => {
+      const g = ouvrirFeuille({ titre:'Changer mon mot de passe', centre:true, contenu:`<div class="erreur" id="cm-err"></div>
+        <label class="champ"><span>Nouveau mot de passe</span><input class="saisie" type="password" id="cm-1" autocomplete="new-password"><div class="sous">Au moins 8 caractères, avec des lettres et des chiffres.</div></label>
+        <label class="champ"><span>Confirmez</span><input class="saisie" type="password" id="cm-2" autocomplete="new-password"></label>
+        <button class="btn" id="cm-ok">Enregistrer</button>` });
+      $('#cm-ok', g.contenu).onclick = async () => { try{ await changerMotDePasse($('#cm-1').value, $('#cm-2').value); await fermerFeuille(); toast('Mot de passe modifié.'); }catch(e){ $('#cm-err').textContent = e.message; } };
+    };
+  }});
+}
+
+/* ---------- Administration (rôle admin uniquement) ----------
+   L'administrateur ne voit QUE l'activité (aucun montant, aucun client) :
+   c'est garanti côté serveur par la fonction admin_activite().              */
+function ecranAdmin(){
+  ouvrirFeuille({ titre:'Administration', pied:'', manuel:true, rendre: async f => {
+    f.pied.innerHTML = '<button class="btn" id="ad-ajout">'+ic('plus')+' Ajouter un livreur</button>';
+    $('#ad-ajout', f.pied).onclick = () => formulaireLivreur(f);
+    if(!navigator.onLine){ f.contenu.innerHTML = '<div class="vide-etat">L\'administration nécessite une connexion internet.</div>'; return; }
+    f.contenu.innerHTML = '<div class="vide-etat"><span class="chargement"></span></div>';
+    const { data, error } = await sb.rpc('admin_activite');
+    if(error){ f.contenu.innerHTML = `<div class="erreur">${esc(error.message)}</div>`; return; }
+    const liste = data || [];
+    const actifs7j = liste.filter(l => l.nb_commandes_7j > 0).length;
+    f.contenu.innerHTML = `<div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+        <div class="kpi"><b>${liste.length}</b><span>Comptes</span></div>
+        <div class="kpi vert"><b>${actifs7j}</b><span>Actifs 7 j</span></div>
+        <div class="kpi rouge"><b>${liste.filter(l=>!l.actif).length}</b><span>Suspendus</span></div></div>
+      <p class="sous" style="margin:0 2px 12px">Vous voyez uniquement l'activité des comptes. Les commandes, clients et montants restent privés à chaque livreur.</p>
+      ${liste.map(l => `<div class="carte">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="flex:1">${esc(l.nom)}</b>
+          ${l.role==='admin'?'<span class="badge b-recuperee">Admin</span>':''}
+          ${!l.actif?'<span class="badge b-retard">Suspendu</span>':l.doit_changer_mdp?'<span class="badge b-en_attente">Mot de passe provisoire</span>':'<span class="badge b-livree">Actif</span>'}</div>
+        <dl class="info" style="font-size:14px">
+          <dt>Téléphone</dt><dd>+${CONFIG.INDICATIF} ${esc(telAffiche(l.telephone))}</dd>
+          <dt>Dernière connexion</dt><dd>${l.derniere_connexion?dateCourte(l.derniere_connexion)+' '+heure(l.derniere_connexion):'jamais'}</dd>
+          <dt>Dernière synchro</dt><dd>${l.derniere_synchro?dateCourte(l.derniere_synchro)+' '+heure(l.derniere_synchro):'jamais'}</dd>
+          <dt>Commandes</dt><dd>${l.nb_commandes} au total · ${l.nb_commandes_7j} sur 7 jours</dd>
+        </dl>
+        ${l.id!==S.uid?`<div class="grille-btn" style="margin-top:10px"><button class="btn second petit" style="width:100%" data-reinit="${l.id}">Nouveau mot de passe</button>
+          <button class="btn ${l.actif?'contour':'vert'} petit" style="width:100%" data-susp="${l.id}" data-actif="${l.actif?'0':'1'}">${l.actif?'Suspendre':'Réactiver'}</button></div>`:''}
+      </div>`).join('')}`;
+    $$('[data-reinit]', f.contenu).forEach(b => b.onclick = async () => {
+      const l = liste.find(x => x.id === b.dataset.reinit);
+      if(!(await confirmer('Nouveau mot de passe', `Générer un nouveau mot de passe provisoire pour ${l.nom} ? Il sera déconnecté de ses appareils et devra le changer à la connexion.`, 'Générer'))) return;
+      const mdp = genererMdp();
+      const { error } = await sb.rpc('admin_reinit_mdp', { p_id:l.id, p_mdp:mdp });
+      if(error) return toast(error.message);
+      afficherAcces(l.nom, normTel(l.telephone), mdp, true); f.rendre(f);
+    });
+    $$('[data-susp]', f.contenu).forEach(b => b.onclick = async () => {
+      const l = liste.find(x => x.id === b.dataset.susp), activer = b.dataset.actif === '1';
+      if(!(await confirmer(activer?'Réactiver le compte':'Suspendre le compte', activer ? `${l.nom} pourra de nouveau se connecter.` : `${l.nom} ne pourra plus se connecter ni synchroniser. Ses données sont conservées.`, activer?'Réactiver':'Suspendre', activer?'vert':'rouge'))) return;
+      const { error } = await sb.rpc('admin_suspendre', { p_id:l.id, p_actif:activer });
+      if(error) return toast(error.message);
+      toast(activer ? 'Compte réactivé.' : 'Compte suspendu.'); f.rendre(f);
+    });
+  }});
+}
+function formulaireLivreur(parent){
+  const mdp = genererMdp();
+  const f = ouvrirFeuille({ titre:'Ajouter un livreur', pied:'', contenu:`
+    <div class="erreur" id="al-err"></div>
+    <label class="champ"><span>Nom et prénom <em>*</em></span><input class="saisie" id="al-nom"></label>
+    <label class="champ"><span>Téléphone (identifiant de connexion) <em>*</em></span><div class="prefixe"><b>+${CONFIG.INDICATIF}</b><input class="saisie" id="al-tel" type="tel" inputmode="numeric"></div></label>
+    <label class="champ"><span>Mot de passe provisoire</span><input class="saisie" id="al-mdp" value="${mdp}"><div class="sous">Le livreur devra le changer à sa première connexion.</div></label>
+    <label class="champ"><span>Rôle</span><select class="saisie" id="al-role"><option value="livreur">Livreur</option><option value="admin">Administrateur</option></select></label>` });
+  f.pied.innerHTML = '<button class="btn" id="al-ok">Créer le compte</button>';
+  $('#al-ok', f.pied).onclick = async () => {
+    const err = $('#al-err'), nom = $('#al-nom').value.trim(), tel = normTel($('#al-tel').value), pw = $('#al-mdp').value.trim(), role = $('#al-role').value;
+    err.textContent = '';
+    if(!nom) return err.textContent = 'Indiquez le nom.';
+    if(!telValide(tel)) return err.textContent = 'Numéro invalide ('+CONFIG.LONGUEUR_NUMERO+' chiffres).';
+    if(!mdpRobuste(pw)) return err.textContent = 'Mot de passe provisoire : 8 caractères minimum, lettres et chiffres.';
+    const b = $('#al-ok', f.pied); b.disabled = true; b.innerHTML = '<span class="chargement"></span>';
+    try{
+      // 1) Autoriser le numéro  2) Créer le compte (client temporaire : la session admin n'est pas touchée)
+      const ins = await sb.from('autorisations').insert({ telephone:CONFIG.INDICATIF+tel, nom, role, cree_par:S.uid });
+      if(ins.error){ if(/duplicate|unique/i.test(ins.error.message)) throw new Error('Ce numéro a déjà été autorisé ou possède déjà un compte.'); throw ins.error; }
+      const tmp = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:'sb-creation-temp' } });
+      const { data, error } = await tmp.auth.signUp({ email:emailDe(tel), password:pw });
+      if(error){ await sb.from('autorisations').delete().eq('telephone', CONFIG.INDICATIF+tel); throw error; }
+      if(data && data.user && !data.session) toast('Compte créé, mais la confirmation d\'e-mail est activée dans Supabase : désactivez-la (voir guide).');
+      await fermerFeuille();
+      afficherAcces(nom, tel, pw, false);
+      if(parent && parent.rendre) parent.rendre(parent);
+    }catch(e){ err.textContent = e.message || String(e); }
+    finally{ b.disabled = false; b.textContent = 'Créer le compte'; }
+  };
+}
+function afficherAcces(nom, tel, mdp, reinit){
+  const lien = location.origin + location.pathname.replace(/index\.html$/,'');
+  const msg = `Bonjour ${nom},\n${reinit?'Votre mot de passe a été réinitialisé.':'Votre compte '+CONFIG.NOM_APPLI+' est prêt.'}\n\nLien de l'appli : ${lien}\nIdentifiant : votre numéro ${telAffiche(tel)}\nMot de passe provisoire : ${mdp}\n\nÀ la connexion, l'appli vous demandera de choisir votre propre mot de passe, puis un code PIN.`;
+  const f = ouvrirFeuille({ titre:'Accès du livreur', centre:true, contenu:`
+    <p style="margin-top:0">Transmettez ces informations à <b>${esc(nom)}</b>. Le mot de passe provisoire ne sera plus affiché ensuite.</p>
+    <div class="carte"><dl class="info"><dt>Identifiant</dt><dd>${esc(telAffiche(tel))}</dd><dt>Mot de passe</dt><dd style="font-family:monospace;font-size:18px;letter-spacing:.06em">${esc(mdp)}</dd></dl></div>
+    <div class="pile"><a class="btn vert" href="${lienWhatsApp(tel, msg)}" target="_blank" rel="noopener">${ic('message')} Envoyer par WhatsApp</a>
+    <button class="btn second" id="ac-copie">${ic('copie')} Copier le message</button></div>` });
+  $('#ac-copie', f.contenu).onclick = async () => { try{ await navigator.clipboard.writeText(msg); toast('Message copié.'); }catch(e){ toast('Copie impossible sur ce téléphone.'); } };
+}
+
+/* =====================================================================
+   16a. LOT 2 — PHOTOS DE PREUVE DE LIVRAISON
+   Les photos sont compressées (JPEG ~100-200 Ko), gardées dans le
+   téléphone (IndexedDB) puis envoyées dans l'espace privé « preuves »
+   de Supabase : preuves/<id_livreur>/<id_commande>/<id_photo>.jpg
+   ===================================================================== */
+const BUCKET = 'preuves';
+const cheminPhoto = (cmdId, phId) => S.uid + '/' + cmdId + '/' + phId + '.jpg';
+const urlsPhotos = {};   // cache des adresses d'images affichées
+
+async function chargerPhotosAttente(){
+  const tout = await DB.tout('photos');
+  S.photosAttente = tout.filter(p => p.supprime || !p.envoye).map(p => ({ id:p.id, commande_id:p.commande_id, action: p.supprime ? 'supprimer' : 'envoyer' }));
+}
+
+// Ouvre l'appareil photo (ou la galerie) et renvoie le fichier choisi
+function choisirPhoto(){
+  return new Promise(ok => {
+    $$('input.choix-photo').forEach(i => i.remove());
+    const i = document.createElement('input');
+    i.type = 'file'; i.accept = 'image/*'; i.setAttribute('capture','environment'); i.className = 'choix-photo cache';
+    document.body.appendChild(i);
+    i.addEventListener('change', () => ok(i.files && i.files[0] ? i.files[0] : null));
+    i.addEventListener('cancel', () => ok(null));
+    i.click();
+  });
+}
+
+// Réduit la photo (côté le plus long = PHOTO_MAX_PX) et la convertit en JPEG
+async function compresserImage(fichier){
+  let source;
+  try{ source = await createImageBitmap(fichier, { imageOrientation:'from-image' }); }
+  catch(e){ source = await new Promise((ok,ko) => { const im = new Image(); im.onload = () => ok(im); im.onerror = ko; im.src = URL.createObjectURL(fichier); }); }
+  const l = source.width, h = source.height, k = Math.min(1, CONFIG.PHOTO_MAX_PX / Math.max(l, h));
+  const cv = document.createElement('canvas'); cv.width = Math.round(l*k); cv.height = Math.round(h*k);
+  const ctx = cv.getContext('2d'); ctx.drawImage(source, 0, 0, cv.width, cv.height);
+  // Horodatage incrusté en bas de l'image (utile en cas de litige)
+  const txt = dateCourte(maintenant()) + ' ' + heure(maintenant()) + ' — ' + (S.profil ? S.profil.nom : '');
+  const fs = Math.max(14, Math.round(cv.width/40));
+  ctx.font = '600 '+fs+'px sans-serif'; const tw = ctx.measureText(txt).width;
+  ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, cv.height - fs*1.8, tw + fs*1.4, fs*1.8);
+  ctx.fillStyle = '#fff'; ctx.fillText(txt, fs*0.7, cv.height - fs*0.55);
+  return await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.72));
+}
+
+async function ajouterPhoto(cmdId){
+  const c = S.commandes.find(x => x.id === cmdId); if(!c) return false;
+  if((c.photos||[]).length >= CONFIG.PHOTOS_MAX){ toast('Maximum '+CONFIG.PHOTOS_MAX+' photos par commande.'); return false; }
+  const fichier = await choisirPhoto(); if(!fichier) return false;
+  try{
+    const blob = await compresserImage(fichier);
+    const id = uuid(), le = maintenant();
+    await DB.mettre('photos', { id, commande_id:c.id, blob, le, envoye:false });
+    S.photosAttente.push({ id, commande_id:c.id, action:'envoyer' });
+    c.photos = (c.photos||[]).concat([{ id, le }]);
+    c.historique = (c.historique||[]).concat([{ s:'photo', le }]);
+    await enregistrer('commandes', c);
+    toast('Photo enregistrée.');
+    return true;
+  }catch(e){ console.warn(e); toast('Impossible de traiter cette photo.'); return false; }
+}
+
+// Option « photo à chaque livraison » : panneau avec un gros bouton (geste nécessaire pour ouvrir l'appareil)
+function demanderPhotoLivraison(id, avant){
+  const c = S.commandes.find(x => x.id === id);
+  const f = ouvrirFeuille({ titre:'Photo de preuve', centre:true, contenu:`
+    <p style="margin-top:0">Livraison enregistrée pour <b>${esc(c.client_nom)}</b>. Prenez le colis remis en photo : elle vous protège en cas de contestation.</p>
+    <div class="pile"><button class="btn vert" id="pl-photo">${ic('photo')} Prendre la photo</button>
+    <button class="btn second" id="pl-passer">Plus tard</button>
+    <button class="lien" id="pl-annuler">Annuler la livraison</button></div>` });
+  $('#pl-photo', f.contenu).onclick = async () => { const fait = await ajouterPhoto(id); if(fait) fermerFeuille(); };
+  $('#pl-passer', f.contenu).onclick = () => fermerFeuille();
+  $('#pl-annuler', f.contenu).onclick = async () => { await fermerFeuille(); enregistrer('commandes', avant); toast('Livraison annulée.'); };
+}
+
+// Adresse affichable d'une photo : téléphone d'abord, sinon téléchargement depuis le serveur
+async function urlPhoto(cmdId, phId){
+  if(urlsPhotos[phId]) return urlsPhotos[phId];
+  let rec = await DB.lire('photos', phId);
+  if(!(rec && rec.blob) && navigator.onLine && sb){
+    const { data, error } = await sb.storage.from(BUCKET).download(cheminPhoto(cmdId, phId));
+    if(!error && data){ rec = { id:phId, commande_id:cmdId, blob:data, le:maintenant(), envoye:true }; await DB.mettre('photos', rec); }
+  }
+  if(rec && rec.blob) return (urlsPhotos[phId] = URL.createObjectURL(rec.blob));
+  return null;
+}
+async function remplirMiniatures(racine, c){
+  for(const b of $$('[data-photo]', racine)){
+    const url = await urlPhoto(c.id, b.dataset.photo);
+    b.innerHTML = url ? `<img src="${url}" alt="Photo de preuve">` : 'Hors ligne';
+    b.onclick = () => voirPhoto(c.id, b.dataset.photo);
+  }
+}
+async function voirPhoto(cmdId, phId){
+  const c = S.commandes.find(x => x.id === cmdId); const ph = (c.photos||[]).find(p => p.id === phId); if(!ph) return;
+  const url = await urlPhoto(cmdId, phId);
+  const v = vendeurDe(c.vendeur_id);
+  const f = ouvrirFeuille({ titre:'Photo — ' + c.client_nom, contenu:`<div class="visionneuse">${url?`<img src="${url}" alt="">`:'<div class="vide-etat">Photo non disponible hors ligne.</div>'}</div>
+    <p class="sous">Prise le ${dateCourte(ph.le)} à ${heure(ph.le)} — commande ${esc(c.numero||'')}</p>
+    <div class="grille-btn"><button class="btn second" id="vp-partager" ${url?'':'disabled'}>${ic('partage')} ${v?'Envoyer au vendeur':'Partager'}</button><button class="btn contour" id="vp-suppr">Supprimer</button></div>` });
+  $('#vp-partager', f.contenu).onclick = async () => {
+    const rec = await DB.lire('photos', phId); if(!rec) return;
+    const texte = `Preuve de livraison — ${c.client_nom}${c.quartier?' ('+c.quartier+')':''}, livré le ${c.livree_le?dateCourte(c.livree_le)+' à '+heure(c.livree_le):dateCourte(ph.le)}. Réf. ${c.numero||''}`;
+    await partagerFichier(rec.blob, 'Preuve_' + (c.numero||'livraison') + '.jpg', texte);
+  };
+  $('#vp-suppr', f.contenu).onclick = async () => {
+    if(!(await confirmer('Supprimer la photo', 'Cette photo de preuve sera supprimée définitivement.', 'Supprimer', 'rouge'))) return;
+    const rec = await DB.lire('photos', phId);
+    S.photosAttente = S.photosAttente.filter(p => p.id !== phId);
+    if(rec && rec.envoye){ rec.supprime = true; await DB.mettre('photos', rec); S.photosAttente.push({ id:phId, commande_id:cmdId, action:'supprimer' }); }
+    else await DB.effacer('photos', phId);
+    if(urlsPhotos[phId]){ URL.revokeObjectURL(urlsPhotos[phId]); delete urlsPhotos[phId]; }
+    c.photos = (c.photos||[]).filter(p => p.id !== phId);
+    await fermerFeuille();
+    await enregistrer('commandes', c);
+    toast('Photo supprimée.');
+  };
+}
+// Envoi / suppression des photos sur le serveur (appelé par la synchronisation)
+async function synchroniserPhotos(){
+  for(const p of S.photosAttente.slice()){
+    const chemin = cheminPhoto(p.commande_id, p.id);
+    if(p.action === 'envoyer'){
+      const rec = await DB.lire('photos', p.id);
+      if(rec && rec.blob){
+        const { error } = await sb.storage.from(BUCKET).upload(chemin, rec.blob, { contentType:'image/jpeg', upsert:true });
+        if(error) throw error;
+        rec.envoye = true; await DB.mettre('photos', rec);
+      }
+    } else {
+      const { error } = await sb.storage.from(BUCKET).remove([chemin]);
+      if(error) throw error;
+      await DB.effacer('photos', p.id);
+    }
+    S.photosAttente = S.photosAttente.filter(x => x.id !== p.id);
+  }
+}
+
+/* =====================================================================
+   16b. LOT 2 — PRÉVENIR LE CLIENT (messages prêts à envoyer)
+   ===================================================================== */
+function prevenirClient(id){
+  const etat = { canal: localStorage.getItem('canal_message') || 'wa', minutes: 20 };
+  ouvrirFeuille({ titre:'Prévenir le client', rendre: f => {
+    const c = S.commandes.find(x => x.id === id); if(!c) return;
+    const v = vendeurDe(c.vendeur_id), a = argent(c), prenom = (S.profil.nom||'').split(' ')[0];
+    const quand = c.date_prevue === ymd() ? "aujourd'hui" : c.date_prevue === decaler(1) ? 'demain' : 'le ' + dateLisible(c.date_prevue);
+    const MESSAGES = [
+      ['route', 'Je suis en route', `Bonjour ${c.client_nom}, c'est ${prenom}, votre livreur${v?' ('+v.nom+')':''}. Je suis en route pour vous livrer votre colis, j'arrive dans environ ${etat.minutes} minutes.`],
+      ['arrive', 'Je suis arrivé', `Bonjour ${c.client_nom}, je suis arrivé${c.quartier?' à '+c.quartier:''}${c.repere?' ('+c.repere+')':''} avec votre colis. Je vous attends.`],
+      ['passage', 'Heure de passage', `Bonjour ${c.client_nom}, je passerai vous livrer votre colis${v?' de '+v.nom:''} ${quand}${c.heure_prevue?' vers '+c.heure_prevue.replace(':','h'):''}. Merci d'être disponible.`],
+      ['montant', 'Montant à prévoir', `Bonjour ${c.client_nom}, pour la livraison de votre colis${v?' de '+v.nom:''}, merci de prévoir ${fmtF(a.encaisse)}${c.mode_paiement==='mobile_money'?' (paiement par mobile money)':''}. À tout à l'heure.`],
+      ['position', 'Demander la position', `Bonjour ${c.client_nom}, pour vous livrer plus vite, pouvez-vous m'envoyer votre position (localisation WhatsApp) ? Merci.`],
+      ['injoignable', 'Client injoignable', `Bonjour ${c.client_nom}, j'ai essayé de vous joindre pour la livraison de votre colis${v?' de '+v.nom:''}. Merci de me rappeler au ${telAffiche(S.profil.telephone)}.`]
+    ];
+    const lien = t => etat.canal === 'wa' ? lienWhatsApp(c.client_tel, t) : 'sms:+' + telInternational(c.client_tel) + '?body=' + encodeURIComponent(t);
+    f.contenu.innerHTML = `
+      <div class="choix" style="margin-bottom:14px"><button type="button" data-canal="wa" class="${etat.canal==='wa'?'actif':''}">${ic('message')} WhatsApp</button><button type="button" data-canal="sms" class="${etat.canal==='sms'?'actif':''}">SMS</button></div>
+      ${MESSAGES.map(([k,t,m]) => `<div class="message-type"><b>${t}</b>${k==='route'?`<div class="choix" style="margin-bottom:8px">${[10,20,30,45].map(n=>`<button type="button" data-min="${n}" class="${etat.minutes===n?'actif':''}">${n} min</button>`).join('')}</div>`:''}<p>${esc(m)}</p>
+        <a class="btn petit" style="width:100%" href="${lien(m)}" target="_blank" rel="noopener" data-envoi="${esc(t)}">${ic('envoi')} Envoyer</a></div>`).join('')}
+      <a class="btn second" href="${lien('Bonjour '+c.client_nom+', ')}" target="_blank" rel="noopener">Écrire un message libre</a>`;
+    $$('[data-canal]', f.contenu).forEach(b => b.onclick = () => { etat.canal = b.dataset.canal; localStorage.setItem('canal_message', etat.canal); f.rendre(f); });
+    $$('[data-min]', f.contenu).forEach(b => b.onclick = () => { etat.minutes = +b.dataset.min; f.rendre(f); });
+    // Trace dans l'historique de la commande (utile en cas de litige)
+    $$('[data-envoi]', f.contenu).forEach(b => b.addEventListener('click', () => {
+      const x = S.commandes.find(k => k.id === id);
+      x.historique = (x.historique||[]).concat([{ s:'message', le:maintenant(), m: b.dataset.envoi + (etat.canal==='sms'?' (SMS)':'') }]);
+      enregistrer('commandes', x);
+    }));
+  }});
+}
+
+/* =====================================================================
+   16c. LOT 2 — RAPPELS (notifications) ET ALERTES
+   Les rappels sont calculés dans le téléphone : ils arrivent quand
+   l'appli est ouverte ou en arrière-plan récent. (Des rappels envoyés
+   par le serveur, appli fermée, demanderaient un service de « push ».)
+   ===================================================================== */
+const prefCle = k => 'pref_' + k + '_' + S.uid;
+const prefRappels = () => localStorage.getItem(prefCle('rappels')) === '1';
+const prefDelai = () => parseInt(localStorage.getItem(prefCle('delai')) || '30', 10);
+const prefPhotoLivraison = () => localStorage.getItem(prefCle('photo')) === '1';
+const notifPossible = () => 'Notification' in window;
+
+async function activerRappels(oui){
+  if(!oui){ localStorage.setItem(prefCle('rappels'), '0'); return true; }
+  if(notifPossible() && Notification.permission !== 'granted'){
+    let r = 'denied'; try{ r = await Notification.requestPermission(); }catch(e){}
+    if(r !== 'granted') toast('Notifications refusées : les rappels s\'afficheront seulement dans l\'appli ouverte.');
+  }
+  localStorage.setItem(prefCle('rappels'), '1');
+  verifierRappels();
+  return true;
+}
+
+async function notifier(titre, corps, cmdId){
+  const visible = document.visibilityState === 'visible' && appOuverte();
+  if(visible){ toast(corps, cmdId ? { libelle:'Voir', fn: () => ficheCommande(cmdId) } : null); return; }
+  if(!notifPossible() || Notification.permission !== 'granted') return;
+  const opts = { body:corps, icon:'icone-192.png', badge:'icone-192.png', tag: cmdId || titre, data:{ cmd: cmdId || null }, vibrate:[200,100,200] };
+  try{ const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if(reg){ await reg.showNotification(titre, opts); return; } }catch(e){}
+  try{ const n = new Notification(titre, opts); n.onclick = () => { window.focus(); if(cmdId) ficheCommande(cmdId); }; }catch(e){}
+}
+
+// Prochaine livraison avec une heure prévue aujourd'hui
+function prochaineLivraison(){
+  const now = new Date();
+  return S.commandes.filter(c => ACTIFS.includes(c.statut) && c.date_prevue === ymd() && c.heure_prevue)
+    .map(c => ({ c, t: new Date(c.date_prevue + 'T' + c.heure_prevue + ':00') }))
+    .filter(x => x.t - now > -60*60000)
+    .sort((a,b) => a.t - b.t)[0] || null;
+}
+function delaiTexte(t){
+  const m = Math.round((t - new Date())/60000);
+  if(m > 59) return 'dans ' + Math.floor(m/60) + ' h ' + String(m%60).padStart(2,'0');
+  if(m > 0) return 'dans ' + m + ' min';
+  if(m > -5) return 'maintenant';
+  return 'en retard de ' + (-m) + ' min';
+}
+
+// Vendeurs dont l'argent n'est pas reversé depuis plus de X jours
+function alertesReversement(){
+  const limite = Date.now() - CONFIG.ALERTE_REVERSEMENT_JOURS * 86400000, parV = {};
+  S.commandes.filter(c => c.statut==='livree' && !c.reverse && c.vendeur_id && c.livree_le && argent(c).netVendeur > 0).forEach(c => {
+    const x = parV[c.vendeur_id] = parV[c.vendeur_id] || { id:c.vendeur_id, nom:nomVendeur(c.vendeur_id), montant:0, plusAncien:c.livree_le };
+    x.montant += argent(c).netVendeur; if(c.livree_le < x.plusAncien) x.plusAncien = c.livree_le;
+  });
+  return Object.values(parV).filter(x => new Date(x.plusAncien).getTime() < limite)
+    .map(x => Object.assign(x, { jours: Math.floor((Date.now() - new Date(x.plusAncien).getTime())/86400000) }));
+}
+
+function verifierRappels(){
+  if(!S.uid || !S.profil || !prefRappels()) return;
+  const cle = 'rappels_envoyes_' + S.uid;
+  let faits = {}; try{ faits = JSON.parse(localStorage.getItem(cle) || '{}'); }catch(e){}
+  const now = new Date(), delai = prefDelai(), aujourd = ymd();
+  Object.keys(faits).forEach(k => { if(Date.now() - faits[k] > 3*86400000) delete faits[k]; });   // nettoyage
+  // 1) Rappel avant chaque livraison à heure prévue
+  S.commandes.filter(c => ACTIFS.includes(c.statut) && c.date_prevue === aujourd && c.heure_prevue).forEach(c => {
+    const t = new Date(c.date_prevue + 'T' + c.heure_prevue + ':00'), m = (t - now)/60000;
+    const k = 'l|' + c.id + '|' + c.date_prevue + '|' + c.heure_prevue;
+    if(m <= delai && m > -30 && !faits[k]){
+      faits[k] = Date.now();
+      notifier('Livraison à ' + c.heure_prevue.replace(':','h'), `${c.client_nom}${c.quartier?' — '+c.quartier:''} (${delaiTexte(t)}). À encaisser : ${fmtF(argent(c).encaisse)}`, c.id);
+    }
+  });
+  // 2) Résumé du jour (une fois par jour, à partir de 6 h)
+  const kj = 'jour|' + aujourd;
+  if(!faits[kj] && now.getHours() >= 6){
+    const jour = S.commandes.filter(c => ACTIFS.includes(c.statut) && c.date_prevue <= aujourd);
+    const retard = jour.filter(enRetard).length;
+    if(jour.length){ faits[kj] = Date.now(); notifier('Vos livraisons du jour', `${jour.length} livraison(s) à faire aujourd'hui${retard?', dont '+retard+' en retard':''}.`); }
+  }
+  // 3) Argent à reverser en retard (une fois par jour)
+  const kr = 'rev|' + aujourd;
+  const al = alertesReversement();
+  if(!faits[kr] && al.length && now.getHours() >= 8){
+    faits[kr] = Date.now();
+    notifier('Argent à reverser', al.map(x => `${x.nom} : ${fmtF(x.montant)} (${x.jours} j)`).join(' · '));
+  }
+  localStorage.setItem(cle, JSON.stringify(faits));
+}
+setInterval(verifierRappels, 60000);
+
+// Pastille sur l'icône de l'appli installée : nombre de livraisons à faire aujourd'hui
+function majPastille(){
+  if(!('setAppBadge' in navigator) || !S.uid) return;
+  const n = S.commandes.filter(c => ACTIFS.includes(c.statut) && c.date_prevue <= ymd()).length;
+  (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(()=>{});
+}
+
+// Ouverture d'une commande depuis une notification
+let commandeAOuvrir = new URLSearchParams(location.search).get('cmd');
+if(commandeAOuvrir) history.replaceState(null, '', location.pathname);
+if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => {
+  if(e.data && e.data.type === 'ouvrir' && e.data.cmd){ if(appOuverte()) ficheCommande(e.data.cmd); else commandeAOuvrir = e.data.cmd; }
+});
+
+/* =====================================================================
+   16. SERVICE WORKER (hors ligne + mises à jour)
+   ===================================================================== */
+if('serviceWorker' in navigator && location.protocol !== 'file:'){
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      nw && nw.addEventListener('statechange', () => {
+        if(nw.state === 'installed' && navigator.serviceWorker.controller)
+          toast('Nouvelle version disponible.', { libelle:'Mettre à jour', fn: () => nw.postMessage('SKIP_WAITING') });
+      });
+    });
+  }).catch(()=>{});
+  let recharge = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if(!recharge){ recharge = true; location.reload(); } });
+}
+
+demarrer();
+</script>
+</body>
+</html>
